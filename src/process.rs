@@ -1,19 +1,15 @@
 use std::{
     os::unix::process::CommandExt,
     process::Command,
-    sync::{LockResult, Mutex, PoisonError},
+    sync::{LockResult, Mutex, MutexGuard},
 };
 
-struct ProcessInner {
+pub struct ProcessInner {
     pid: i32,
 }
 
 pub struct Process {
     inner: Mutex<ProcessInner>,
-}
-
-pub struct ProcessLock<'a> {
-    guard: std::sync::MutexGuard<'a, ProcessInner>,
 }
 
 impl Process {
@@ -36,21 +32,14 @@ impl Process {
         })
     }
 
-    pub fn lock(&self) -> LockResult<ProcessLock<'_>> {
-        self.inner
-            .lock()
-            .map(|guard| ProcessLock { guard })
-            .map_err(|e| {
-                PoisonError::new(ProcessLock {
-                    guard: e.into_inner(),
-                })
-            })
+    pub fn lock(&self) -> LockResult<MutexGuard<'_, ProcessInner>> {
+        self.inner.lock()
     }
 }
 
-impl<'a> ProcessLock<'a> {
-    pub fn wait(&self) -> Result<(), std::io::Error> {
-        let pid = self.guard.pid;
+impl ProcessInner {
+    pub fn wait(&mut self) -> Result<(), std::io::Error> {
+        let pid = self.pid;
         let mut status: i32 = 0;
 
         let ret = unsafe { libc::waitpid(pid, &mut status as *mut i32, 0) };
