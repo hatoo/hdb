@@ -204,13 +204,12 @@ mod tests {
         command.spawn().unwrap().wait().unwrap();
 
         let mut process = Process::spawn(Command::new(&temp_path)).unwrap();
+
         process.resume().unwrap();
-
         process.wait_on_signal().unwrap();
-
         let regs = process.get_registers().unwrap();
-
         assert_eq!(regs.r13, 0xcafecafe);
+
         process.resume().unwrap();
     }
 }
