@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use rustyline::DefaultEditor;
 
 mod process;
 mod register;
@@ -29,12 +30,13 @@ fn main() -> anyhow::Result<()> {
 
     let mut process = process::Process::spawn(command)?;
 
+    let mut rl = DefaultEditor::new()?;
     loop {
-        let line = {
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input)?;
-            input
-        };
+        let line = rl.readline(">> ")?;
+
+        if line.trim().is_empty() {
+            continue;
+        }
 
         let cmd = {
             let mut cmd: Vec<_> = line.trim().split_whitespace().collect();
