@@ -102,4 +102,45 @@ impl Process {
         self.state = ProcessState::Running;
         Ok(())
     }
+
+    #[cfg(test)]
+    fn stat(&self) -> char {
+        let path = format!("/proc/{}/stat", self.pid);
+
+        std::fs::read_to_string(path)
+            .unwrap()
+            .split_whitespace()
+            .nth(2)
+            .unwrap()
+            .chars()
+            .next()
+            .unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resume() {
+        let mut command = Command::new("sleep");
+        command.arg("10");
+
+        let mut process = Process::spawn(command).unwrap();
+        process.resume().unwrap();
+
+        assert!(matches!(process.stat(), 'S' | 'R'));
+    }
+
+    #[test]
+    fn test_resume_already_terminated() {
+        let command = Command::new("true");
+
+        let mut process = Process::spawn(command).unwrap();
+        process.resume().unwrap();
+        process.wait().unwrap();
+
+        assert!(process.resume().is_err());
+    }
 }
