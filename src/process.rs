@@ -19,7 +19,7 @@ impl Drop for Process {
         if self.state == ProcessState::Running {
             unsafe { libc::kill(self.pid, libc::SIGSTOP) };
             self.state = ProcessState::Stopped;
-            let _ = self.wait();
+            let _ = self.wait_on_signal();
         }
         unsafe {
             libc::ptrace(
@@ -33,7 +33,7 @@ impl Drop for Process {
 
         if self.terminate_on_drop {
             let _ = unsafe { libc::kill(self.pid, libc::SIGKILL) };
-            let _ = self.wait();
+            let _ = self.wait_on_signal();
         }
     }
 }
@@ -70,11 +70,11 @@ impl Process {
             state: ProcessState::Stopped,
             terminate_on_drop: true,
         };
-        proc.wait()?;
+        proc.wait_on_signal()?;
         Ok(proc)
     }
 
-    pub fn wait(&mut self) -> Result<(), std::io::Error> {
+    pub fn wait_on_signal(&mut self) -> Result<(), std::io::Error> {
         let pid = self.pid;
         let mut status: i32 = 0;
 
@@ -139,7 +139,7 @@ mod tests {
 
         let mut process = Process::spawn(command).unwrap();
         process.resume().unwrap();
-        process.wait().unwrap();
+        process.wait_on_signal().unwrap();
 
         assert!(process.resume().is_err());
     }
