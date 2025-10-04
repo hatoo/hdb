@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut process = process::Process::spawn(command)?;
 
-    process.wait()?;
+    process.resume()?;
 
     Ok(())
 }
