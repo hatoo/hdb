@@ -14,9 +14,9 @@ fn main() -> anyhow::Result<()> {
     let mut command = std::process::Command::new(commands.next().unwrap());
     command.args(commands);
 
-    let process = process::Process::spawn(command)?;
+    let mut process = process::Process::spawn(command)?;
 
-    process.lock().unwrap().wait()?;
+    process.wait()?;
 
     Ok(())
 }

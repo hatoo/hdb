@@ -1,15 +1,7 @@
-use std::{
-    os::unix::process::CommandExt,
-    process::Command,
-    sync::{LockResult, Mutex, MutexGuard},
-};
-
-pub struct ProcessInner {
-    pid: i32,
-}
+use std::{os::unix::process::CommandExt, process::Command};
 
 pub struct Process {
-    inner: Mutex<ProcessInner>,
+    pid: i32,
 }
 
 impl Process {
@@ -24,20 +16,23 @@ impl Process {
 
         if pid == 0 {
             // In child process
+            if unsafe {
+                libc::ptrace(
+                    libc::PTRACE_TRACEME,
+                    0,
+                    std::ptr::null() as *const i32,
+                    std::ptr::null() as *const i32,
+                )
+            } < 0
+            {
+                return Err(std::io::Error::last_os_error());
+            }
             return Err(command.exec());
         }
 
-        Ok(Process {
-            inner: Mutex::new(ProcessInner { pid }),
-        })
+        Ok(Process { pid })
     }
 
-    pub fn lock(&self) -> LockResult<MutexGuard<'_, ProcessInner>> {
-        self.inner.lock()
-    }
-}
-
-impl ProcessInner {
     pub fn wait(&mut self) -> Result<(), std::io::Error> {
         let pid = self.pid;
         let mut status: i32 = 0;
