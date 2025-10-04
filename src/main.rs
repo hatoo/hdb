@@ -1,10 +1,23 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 mod process;
+mod register;
 
 #[derive(Parser, Debug)]
 struct Opt {
     commands: Vec<String>,
+}
+
+#[derive(Parser, Debug)]
+#[clap(infer_subcommands = true)]
+struct UserInput {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    Continue,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -16,7 +29,29 @@ fn main() -> anyhow::Result<()> {
 
     let mut process = process::Process::spawn(command)?;
 
-    process.resume()?;
+    loop {
+        let line = {
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            input
+        };
 
-    Ok(())
+        let cmd = {
+            let mut cmd: Vec<_> = line.trim().split_whitespace().collect();
+            cmd.insert(0, "input");
+            cmd
+        };
+
+        match UserInput::try_parse_from(cmd) {
+            Ok(UserInput {
+                command: Commands::Continue,
+            }) => {
+                process.resume()?;
+                process.wait_on_signal()?;
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+            }
+        }
+    }
 }
