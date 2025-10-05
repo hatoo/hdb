@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use rustyline::DefaultEditor;
 
+use crate::register::REGISTERS;
+
 mod process;
 mod register;
 
@@ -19,6 +21,10 @@ struct UserInput {
 #[derive(Subcommand, Debug)]
 enum Commands {
     Continue,
+    Read {
+        #[clap(value_parser=clap::builder::PossibleValuesParser::new(REGISTERS.iter().map(|r| r.name)))]
+        name: String,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -44,13 +50,22 @@ fn main() -> anyhow::Result<()> {
             cmd
         };
 
+        let _ = rl.add_history_entry(&line);
         match UserInput::try_parse_from(cmd) {
-            Ok(UserInput {
-                command: Commands::Continue,
-            }) => {
-                process.resume()?;
-                process.wait_on_signal()?;
-            }
+            Ok(input) => match input.command {
+                Commands::Continue => {
+                    process.resume()?;
+                    process.wait_on_signal()?;
+                }
+                Commands::Read { name } => {
+                    let regs = process.read_registers()?;
+                    if let Some(value) = regs.read_by_name(&name) {
+                        println!("{name} = {value:?}");
+                    } else {
+                        println!("Unknown register: {name}");
+                    }
+                }
+            },
             Err(e) => {
                 e.print()?;
             }

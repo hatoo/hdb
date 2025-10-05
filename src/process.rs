@@ -1,6 +1,8 @@
 use core::panic;
 use std::{ffi::c_void, os::unix::process::CommandExt, process::Command};
 
+use crate::register::Registers;
+
 pub struct Process {
     pid: i32,
     state: ProcessState,
@@ -102,6 +104,59 @@ impl Process {
         }
         self.state = ProcessState::Running;
         Ok(())
+    }
+
+    pub fn read_registers(&mut self) -> Result<Registers, std::io::Error> {
+        #[cfg(target_arch = "x86_64")]
+        {
+            let mut user: libc::user = unsafe { std::mem::zeroed() };
+
+            if unsafe {
+                libc::ptrace(
+                    libc::PTRACE_GETREGS,
+                    self.pid,
+                    std::ptr::null() as *const c_void,
+                    &mut user.regs as *mut _ as *mut c_void,
+                )
+            } < 0
+            {
+                return Err(std::io::Error::last_os_error());
+            }
+
+            if unsafe {
+                libc::ptrace(
+                    libc::PTRACE_GETFPREGS,
+                    self.pid,
+                    std::ptr::null() as *const c_void,
+                    &mut user.i387 as *mut _ as *mut c_void,
+                )
+            } < 0
+            {
+                return Err(std::io::Error::last_os_error());
+            }
+
+            for i in 0..8 {
+                let data = unsafe {
+                    libc::ptrace(
+                        libc::PTRACE_PEEKUSER,
+                        self.pid,
+                        std::mem::offset_of!(libc::user, u_debugreg).wrapping_add(i * 8)
+                            as *const c_void,
+                        std::ptr::null() as *const c_void,
+                    )
+                };
+
+                if std::io::Error::last_os_error().raw_os_error().unwrap_or(0) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+
+                user.u_debugreg[i] = i64::cast_unsigned(data);
+            }
+
+            return Ok(Registers { user });
+        }
+
+        todo!()
     }
 
     pub fn get_registers(&self) -> Result<libc::user_regs_struct, std::io::Error> {
