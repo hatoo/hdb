@@ -30,13 +30,22 @@ pub enum RegisterValue {
 }
 
 #[cfg(target_arch = "x86_64")]
-pub const REGISTERS: &[RegisterInfo] = &[RegisterInfo {
-    name: "rax",
-    reg_type: RegisterType::Gpr,
-    format: RegisterFormat::Uint,
-    offset: std::mem::offset_of!(libc::user, regs.rax),
-    size: 8,
-}];
+pub const REGISTERS: &[RegisterInfo] = &[
+    RegisterInfo {
+        name: "rax",
+        reg_type: RegisterType::Gpr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, regs.rax),
+        size: 8,
+    },
+    RegisterInfo {
+        name: "r13",
+        reg_type: RegisterType::Gpr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, regs.r13),
+        size: 8,
+    },
+];
 
 impl Registers {
     pub fn read_by_name(&self, name: &str) -> Option<RegisterValue> {

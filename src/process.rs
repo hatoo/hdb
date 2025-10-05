@@ -222,6 +222,7 @@ impl Process {
 
 #[cfg(test)]
 mod tests {
+    use crate::register::RegisterValue;
 
     use super::*;
 
@@ -262,8 +263,11 @@ mod tests {
 
         process.resume().unwrap();
         process.wait_on_signal().unwrap();
-        let regs = process.get_registers().unwrap();
-        assert_eq!(regs.r13, 0xcafecafe);
+        let regs = process.read_registers().unwrap();
+        assert_eq!(
+            regs.read_by_name("r13"),
+            Some(RegisterValue::Uint(0xcafecafe))
+        );
 
         process.resume().unwrap();
     }
