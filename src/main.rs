@@ -1,7 +1,7 @@
 use std::io::Read;
 
 use clap::{Parser, Subcommand};
-use rustyline::{DefaultEditor, ExternalPrinter};
+use rustyline::DefaultEditor;
 
 use crate::register::REGISTERS;
 
