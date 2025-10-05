@@ -26,14 +26,9 @@ impl Drop for Process {
 }
 
 impl Process {
-    pub fn spawn<F>(mut command: Command, mut pre_exec: F) -> Result<Process, std::io::Error>
-    where
-        F: FnMut() -> std::io::Result<()> + Send + Sync + 'static,
-    {
+    pub fn spawn(mut command: Command) -> Result<Process, std::io::Error> {
         unsafe {
             command.pre_exec(move || {
-                pre_exec()?;
-
                 if libc::ptrace(
                     libc::PTRACE_TRACEME,
                     0,
@@ -262,7 +257,7 @@ mod tests {
         let mut command = Command::new("sleep");
         command.arg("10");
 
-        let mut process = Process::spawn(command, || Ok(())).unwrap();
+        let mut process = Process::spawn(command).unwrap();
         process.resume().unwrap();
 
         assert!(matches!(process.stat(), 'S' | 'R'));
@@ -272,7 +267,7 @@ mod tests {
     fn test_resume_already_terminated() {
         let command = Command::new("true");
 
-        let mut process = Process::spawn(command, || Ok(())).unwrap();
+        let mut process = Process::spawn(command).unwrap();
         process.resume().unwrap();
         process.wait_on_signal().unwrap();
 
@@ -290,7 +285,7 @@ mod tests {
 
         command.spawn().unwrap().wait().unwrap();
 
-        let mut process = Process::spawn(Command::new(&temp_path), || Ok(())).unwrap();
+        let mut process = Process::spawn(Command::new(&temp_path)).unwrap();
 
         process.resume().unwrap();
         process.wait_on_signal().unwrap();
@@ -334,14 +329,17 @@ mod tests {
         command.spawn().unwrap().wait().unwrap();
 
         let (rx, tx) = std::io::pipe().unwrap();
-        let mut process = Process::spawn(Command::new(&temp_path), move || {
-            unsafe {
-                libc::close(libc::STDOUT_FILENO);
-                libc::dup2(tx.as_raw_fd(), libc::STDOUT_FILENO);
-            }
-            Ok(())
-        })
-        .unwrap();
+        let mut command = Command::new(&temp_path);
+        unsafe {
+            command.pre_exec(move || {
+                unsafe {
+                    libc::close(libc::STDOUT_FILENO);
+                    libc::dup2(tx.as_raw_fd(), libc::STDOUT_FILENO);
+                }
+                Ok(())
+            })
+        };
+        let mut process = Process::spawn(command).unwrap();
 
         process.resume().unwrap();
         process.wait_on_signal().unwrap();

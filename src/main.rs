@@ -41,7 +41,7 @@ fn main() -> anyhow::Result<()> {
     let prompt = reedline::DefaultPrompt::default();
     let mut rl = reedline::Reedline::create();
 
-    let mut process = process::Process::spawn(command, move || Ok(()))?;
+    let mut process = process::Process::spawn(command)?;
 
     loop {
         let line = rl.read_line(&prompt)?;
