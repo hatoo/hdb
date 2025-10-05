@@ -42,6 +42,13 @@ pub const REGISTERS: &[RegisterInfo] = &[
         size: 8,
     },
     RegisterInfo {
+        name: "rsi",
+        reg_type: RegisterType::Gpr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, regs.rsi),
+        size: 8,
+    },
+    RegisterInfo {
         name: "r13",
         reg_type: RegisterType::Gpr,
         format: RegisterFormat::Uint,
@@ -71,6 +78,24 @@ pub const REGISTERS: &[RegisterInfo] = &[
     },
 ];
 
+impl RegisterValue {
+    pub fn to_le_bytes(&self) -> Vec<u8> {
+        match self {
+            RegisterValue::U64(v) => v.to_le_bytes().to_vec(),
+            RegisterValue::U8(v) => vec![*v],
+            RegisterValue::U128(v) => v.to_le_bytes().to_vec(),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RegisterAccessError {
+    #[error("Unknown register")]
+    UnknownRegister,
+    #[error("Invalid value for the register")]
+    InvalidValue,
+}
+
 impl Registers {
     pub fn read_by_name(&self, name: &str) -> Option<RegisterValue> {
         let reg = REGISTERS.iter().find(|r| r.name == name)?;
@@ -90,5 +115,25 @@ impl Registers {
         };
 
         Some(value)
+    }
+
+    pub fn write_by_name(
+        &mut self,
+        name: &str,
+        value: RegisterValue,
+    ) -> Result<(), RegisterAccessError> {
+        let reg = REGISTERS
+            .iter()
+            .find(|r| r.name == name)
+            .ok_or(RegisterAccessError::UnknownRegister)?;
+        let bytes = value.to_le_bytes();
+        if reg.size < bytes.len() {
+            return Err(RegisterAccessError::InvalidValue);
+        }
+        let ptr = (&mut self.user as *mut _ as *mut u8).wrapping_add(reg.offset);
+        unsafe {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, reg.size);
+        }
+        Ok(())
     }
 }

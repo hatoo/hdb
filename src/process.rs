@@ -42,7 +42,7 @@ impl Drop for Process {
 }
 
 impl Process {
-    pub fn spawn(mut command: Command) -> Result<Process, std::io::Error> {
+    pub fn spawn(mut command: Command, stdout: Option<i32>) -> Result<Process, std::io::Error> {
         let pid = unsafe { libc::fork() };
 
         if pid < 0 {
@@ -53,6 +53,13 @@ impl Process {
 
         if pid == 0 {
             // In child process
+            if let Some(fd) = stdout {
+                unsafe {
+                    libc::close(libc::STDOUT_FILENO);
+                    libc::dup2(fd, libc::STDOUT_FILENO);
+                }
+            }
+
             if unsafe {
                 libc::ptrace(
                     libc::PTRACE_TRACEME,
@@ -72,6 +79,28 @@ impl Process {
             pid,
             state: ProcessState::Stopped,
             terminate_on_drop: true,
+        };
+        proc.wait_on_signal()?;
+        Ok(proc)
+    }
+
+    pub fn attach(pid: i32) -> Result<Process, std::io::Error> {
+        if unsafe {
+            libc::ptrace(
+                libc::PTRACE_ATTACH,
+                pid,
+                std::ptr::null() as *const c_void,
+                std::ptr::null() as *const c_void,
+            )
+        } < 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        let mut proc = Process {
+            pid,
+            state: ProcessState::Stopped,
+            terminate_on_drop: false,
         };
         proc.wait_on_signal()?;
         Ok(proc)
@@ -171,6 +200,62 @@ impl Process {
         todo!()
     }
 
+    pub fn write_registers(&mut self, regs: &Registers) -> Result<(), std::io::Error> {
+        #[cfg(target_arch = "x86_64")]
+        {
+            if unsafe {
+                libc::ptrace(
+                    libc::PTRACE_SETREGS,
+                    self.pid,
+                    std::ptr::null() as *const c_void,
+                    &regs.user.regs as *const _ as *const c_void,
+                )
+            } < 0
+            {
+                eprint!("Failed to set regs: {}", std::io::Error::last_os_error());
+                return Err(std::io::Error::last_os_error());
+            }
+
+            if unsafe {
+                libc::ptrace(
+                    libc::PTRACE_SETFPREGS,
+                    self.pid,
+                    std::ptr::null() as *const c_void,
+                    &regs.user.i387 as *const _ as *const c_void,
+                )
+            } < 0
+            {
+                eprint!("Failed to set fpregs: {}", std::io::Error::last_os_error());
+                return Err(std::io::Error::last_os_error());
+            }
+
+            /*
+            for i in 0..8 {
+                if unsafe {
+                    libc::ptrace(
+                        libc::PTRACE_POKEUSER,
+                        self.pid,
+                        std::mem::offset_of!(libc::user, u_debugreg).wrapping_add(i * 8)
+                            as *const c_void,
+                        regs.user.u_debugreg[i] as *const c_void,
+                    )
+                } < 0
+                {
+                    eprint!(
+                        "Failed to set debugreg: {}",
+                        std::io::Error::last_os_error()
+                    );
+                    return Err(std::io::Error::last_os_error());
+                }
+            }
+            */
+
+            return Ok(());
+        }
+
+        todo!()
+    }
+
     #[cfg(test)]
     fn stat(&self) -> char {
         let path = format!("/proc/{}/stat", self.pid);
@@ -188,6 +273,8 @@ impl Process {
 
 #[cfg(test)]
 mod tests {
+    use std::{io::Read, os::fd::AsRawFd};
+
     use crate::register::RegisterValue;
 
     use super::*;
@@ -197,7 +284,7 @@ mod tests {
         let mut command = Command::new("sleep");
         command.arg("10");
 
-        let mut process = Process::spawn(command).unwrap();
+        let mut process = Process::spawn(command, None).unwrap();
         process.resume().unwrap();
 
         assert!(matches!(process.stat(), 'S' | 'R'));
@@ -207,7 +294,7 @@ mod tests {
     fn test_resume_already_terminated() {
         let command = Command::new("true");
 
-        let mut process = Process::spawn(command).unwrap();
+        let mut process = Process::spawn(command, None).unwrap();
         process.resume().unwrap();
         process.wait_on_signal().unwrap();
 
@@ -225,7 +312,7 @@ mod tests {
 
         command.spawn().unwrap().wait().unwrap();
 
-        let mut process = Process::spawn(Command::new(&temp_path)).unwrap();
+        let mut process = Process::spawn(Command::new(&temp_path), None).unwrap();
 
         process.resume().unwrap();
         process.wait_on_signal().unwrap();
@@ -257,7 +344,34 @@ mod tests {
             Some(RegisterValue::U128(0xba5eba11))
         );
         */
+    }
 
-        return;
+    #[test]
+    fn test_reg_write() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_path = temp_dir.path().join("reg_write");
+        let mut command = Command::new("gcc");
+        command.arg("-o").arg(&temp_path).arg("tests/reg_write.s");
+        command.stderr(std::process::Stdio::null());
+        command.spawn().unwrap().wait().unwrap();
+
+        let (rx, tx) = std::io::pipe().unwrap();
+        let mut process =
+            Process::spawn(Command::new(&temp_path), Some(tx.as_raw_fd() as _)).unwrap();
+
+        process.resume().unwrap();
+        process.wait_on_signal().unwrap();
+
+        let mut regs = process.read_registers().unwrap();
+        regs.write_by_name("rsi", RegisterValue::U64(0xcafecafe))
+            .unwrap();
+        process.write_registers(&regs).unwrap();
+
+        process.resume().unwrap();
+        process.wait_on_signal().unwrap();
+        let mut buf = [0u8; 80];
+        let len = unsafe { libc::read(rx.as_raw_fd(), buf.as_mut_ptr() as *mut c_void, 80) };
+        let output = std::str::from_utf8(&buf[..len as usize]).unwrap();
+        assert_eq!(output, "0xcafecafe");
     }
 }
