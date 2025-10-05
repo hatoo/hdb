@@ -229,16 +229,34 @@ mod tests {
 
         process.resume().unwrap();
         process.wait_on_signal().unwrap();
-        let regs = process.read_registers().unwrap();
         assert_eq!(
-            regs.read_by_name("r13"),
+            process.read_registers().unwrap().read_by_name("r13"),
             Some(RegisterValue::U64(0xcafecafe))
         );
 
         process.resume().unwrap();
         process.wait_on_signal().unwrap();
-        let regs = process.read_registers().unwrap();
-        assert_eq!(regs.read_by_name("r13b"), Some(RegisterValue::U8(42)));
+        assert_eq!(
+            process.read_registers().unwrap().read_by_name("r13b"),
+            Some(RegisterValue::U8(42))
+        );
+
+        process.resume().unwrap();
+        process.wait_on_signal().unwrap();
+        assert_eq!(
+            process.read_registers().unwrap().read_by_name("xmm0"),
+            Some(RegisterValue::U64(0xba5eba11))
+        );
+
+        process.resume().unwrap();
+        process.wait_on_signal().unwrap();
+        // TODO: find good f128 library
+        /*
+        assert_eq!(
+            process.read_registers().unwrap().read_by_name("st0"),
+            Some(RegisterValue::U128(0xba5eba11))
+        );
+        */
 
         return;
     }
