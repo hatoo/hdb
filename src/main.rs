@@ -49,7 +49,7 @@ fn main() -> anyhow::Result<()> {
         let line = match line {
             reedline::Signal::Success(input) => input,
             reedline::Signal::CtrlC | reedline::Signal::CtrlD => {
-                println!("Exiting...");
+                // println!("Exiting...");
                 break;
             }
         };
