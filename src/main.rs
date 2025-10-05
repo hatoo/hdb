@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{Read, Write};
 
 use clap::{Parser, Subcommand};
 use rustyline::DefaultEditor;
@@ -46,8 +46,6 @@ fn main() -> anyhow::Result<()> {
     let (mut rx, tx) = std::io::pipe()?;
     command.stdout(tx);
 
-    let (ctx, crx) = std::sync::mpsc::channel();
-
     let mut process = process::Process::spawn(command, move || Ok(()))?;
 
     std::thread::spawn(move || {
@@ -56,9 +54,7 @@ fn main() -> anyhow::Result<()> {
             match rx.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
-                    if ctx.send(buf[..n].to_vec()).is_err() {
-                        break;
-                    }
+                    print!("{}", String::from_utf8_lossy(&buf[..n]));
                 }
                 Err(e) => {
                     eprintln!("Error reading stdout: {}", e);
@@ -69,10 +65,6 @@ fn main() -> anyhow::Result<()> {
     });
 
     loop {
-        while let Ok(data) = crx.try_recv() {
-            println!("{}", String::from_utf8_lossy(&data));
-        }
-
         let line = rl.readline(">> ")?;
 
         if line.trim().is_empty() {
@@ -117,5 +109,7 @@ fn main() -> anyhow::Result<()> {
                 e.print()?;
             }
         }
+
+        println!();
     }
 }
