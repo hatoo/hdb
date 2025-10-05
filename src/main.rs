@@ -1,5 +1,10 @@
+use std::{
+    io::{Read, Write, stderr, stdout},
+    os::fd::AsRawFd,
+};
+
 use clap::{Parser, Subcommand};
-use rustyline::{DefaultEditor, config::Configurer};
+use rustyline::{DefaultEditor, ExternalPrinter, config::Configurer};
 
 use crate::register::REGISTERS;
 
@@ -35,22 +40,42 @@ enum Commands {
 fn main() -> anyhow::Result<()> {
     let opt = Opt::parse();
 
-    let attr = termios::Termios::from_fd(libc::STDOUT_FILENO)?;
-
     let mut commands = opt.commands.iter();
     let mut command = std::process::Command::new(commands.next().unwrap());
     command.args(commands);
 
-    // Hack: Disable rustyline's pty usage
-    // unsafe { std::env::set_var("TERM", "dumb") };
     let mut rl = DefaultEditor::new()?;
 
-    let mut process = process::Process::spawn(command, move || {
-        termios::tcsetattr(libc::STDOUT_FILENO, termios::TCSANOW, &attr).unwrap();
-        Ok(())
-    })?;
+    let (mut rx, tx) = std::io::pipe()?;
+    command.stdout(tx);
+
+    let (ctx, crx) = std::sync::mpsc::channel();
+
+    let mut process = process::Process::spawn(command, move || Ok(()))?;
+
+    std::thread::spawn(move || {
+        let mut buf = [0; 4096];
+        loop {
+            match rx.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    if ctx.send(buf[..n].to_vec()).is_err() {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error reading stdout: {}", e);
+                    break;
+                }
+            }
+        }
+    });
 
     loop {
+        while let Ok(data) = crx.try_recv() {
+            println!("{}", String::from_utf8_lossy(&data));
+        }
+
         let line = rl.readline(">> ")?;
 
         if line.trim().is_empty() {
