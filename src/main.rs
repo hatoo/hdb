@@ -1,10 +1,7 @@
-use std::{
-    io::{Read, Write, stderr, stdout},
-    os::fd::AsRawFd,
-};
+use std::io::Read;
 
 use clap::{Parser, Subcommand};
-use rustyline::{DefaultEditor, ExternalPrinter, config::Configurer};
+use rustyline::{DefaultEditor, ExternalPrinter};
 
 use crate::register::REGISTERS;
 
