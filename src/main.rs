@@ -1,7 +1,4 @@
-use std::io::{Read, Write};
-
 use clap::{Parser, Subcommand};
-use rustyline::DefaultEditor;
 
 use crate::register::REGISTERS;
 
@@ -41,31 +38,21 @@ fn main() -> anyhow::Result<()> {
     let mut command = std::process::Command::new(commands.next().unwrap());
     command.args(commands);
 
-    let mut rl = DefaultEditor::new()?;
-
-    let (mut rx, tx) = std::io::pipe()?;
-    command.stdout(tx);
+    let prompt = reedline::DefaultPrompt::default();
+    let mut rl = reedline::Reedline::create();
 
     let mut process = process::Process::spawn(command, move || Ok(()))?;
 
-    std::thread::spawn(move || {
-        let mut buf = [0; 4096];
-        loop {
-            match rx.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    print!("{}", String::from_utf8_lossy(&buf[..n]));
-                }
-                Err(e) => {
-                    eprintln!("Error reading stdout: {}", e);
-                    break;
-                }
-            }
-        }
-    });
-
     loop {
-        let line = rl.readline(">> ")?;
+        let line = rl.read_line(&prompt)?;
+
+        let line = match line {
+            reedline::Signal::Success(input) => input,
+            reedline::Signal::CtrlC | reedline::Signal::CtrlD => {
+                println!("Exiting...");
+                break;
+            }
+        };
 
         if line.trim().is_empty() {
             continue;
@@ -77,7 +64,6 @@ fn main() -> anyhow::Result<()> {
             cmd
         };
 
-        let _ = rl.add_history_entry(&line);
         match UserInput::try_parse_from(cmd) {
             Ok(input) => match input.command {
                 Commands::Continue => {
@@ -109,7 +95,7 @@ fn main() -> anyhow::Result<()> {
                 e.print()?;
             }
         }
-
-        println!();
     }
+
+    Ok(())
 }

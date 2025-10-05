@@ -4,7 +4,7 @@ use std::{ffi::c_void, os::unix::process::CommandExt, process::Command};
 use crate::register::Registers;
 
 pub struct Process {
-    _child: Option<std::process::Child>,
+    child: Option<std::process::Child>,
     pid: i32,
     state: ProcessState,
 }
@@ -15,6 +15,14 @@ pub enum ProcessState {
     Stopped,
     Exited,
     Terminated,
+}
+
+impl Drop for Process {
+    fn drop(&mut self) {
+        if let Some(child) = self.child.as_mut() {
+            let _ = child.kill();
+        }
+    }
 }
 
 impl Process {
@@ -46,7 +54,7 @@ impl Process {
 
         // In parent process
         let mut proc = Process {
-            _child: Some(child),
+            child: Some(child),
             pid,
             state: ProcessState::Stopped,
         };
@@ -68,7 +76,7 @@ impl Process {
         }
 
         let mut proc = Process {
-            _child: None,
+            child: None,
             pid,
             state: ProcessState::Stopped,
         };
@@ -243,7 +251,7 @@ impl Process {
 
 #[cfg(test)]
 mod tests {
-    use std::{io::Read, os::fd::AsRawFd};
+    use std::os::fd::AsRawFd;
 
     use crate::register::RegisterValue;
 
