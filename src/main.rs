@@ -35,6 +35,8 @@ enum Commands {
 fn main() -> anyhow::Result<()> {
     let opt = Opt::parse();
 
+    let attr = termios::Termios::from_fd(libc::STDOUT_FILENO)?;
+
     let mut commands = opt.commands.iter();
     let mut command = std::process::Command::new(commands.next().unwrap());
     command.args(commands);
@@ -43,7 +45,10 @@ fn main() -> anyhow::Result<()> {
     // unsafe { std::env::set_var("TERM", "dumb") };
     let mut rl = DefaultEditor::new()?;
 
-    let mut process = process::Process::spawn(command, None)?;
+    let mut process = process::Process::spawn(command, move || {
+        termios::tcsetattr(libc::STDOUT_FILENO, termios::TCSANOW, &attr).unwrap();
+        Ok(())
+    })?;
 
     loop {
         let line = rl.readline(">> ")?;
