@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use rustyline::DefaultEditor;
+use rustyline::{DefaultEditor, config::Configurer};
 
 use crate::register::REGISTERS;
 
@@ -25,6 +25,11 @@ enum Commands {
         #[clap(value_parser=clap::builder::PossibleValuesParser::new(REGISTERS.iter().map(|r| r.name)))]
         name: String,
     },
+    Write {
+        #[clap(value_parser=clap::builder::PossibleValuesParser::new(REGISTERS.iter().map(|r| r.name)))]
+        name: String,
+        value: String,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -36,6 +41,8 @@ fn main() -> anyhow::Result<()> {
 
     let mut process = process::Process::spawn(command, None)?;
 
+    // Hack: Disable rustyline's pty usage
+    // unsafe { std::env::set_var("TERM", "dumb") };
     let mut rl = DefaultEditor::new()?;
     loop {
         let line = rl.readline(">> ")?;
@@ -64,6 +71,18 @@ fn main() -> anyhow::Result<()> {
                     } else {
                         println!("Unknown register: {name}");
                     }
+                }
+                Commands::Write { name, value } => {
+                    let mut regs = process.read_registers()?;
+                    let reg_info = REGISTERS.iter().find(|r| r.name == name).unwrap();
+                    let reg_value = match reg_info.size {
+                        1 => register::RegisterValue::U8(value.parse()?),
+                        8 => register::RegisterValue::U64(value.parse()?),
+                        16 => register::RegisterValue::U128(value.parse()?),
+                        _ => unreachable!(),
+                    };
+                    regs.write_by_name(&name, reg_value)?;
+                    process.write_registers(&regs)?;
                 }
             },
             Err(e) => {

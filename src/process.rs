@@ -53,6 +53,7 @@ impl Process {
 
         if pid == 0 {
             // In child process
+
             if let Some(fd) = stdout {
                 unsafe {
                     libc::close(libc::STDOUT_FILENO);
