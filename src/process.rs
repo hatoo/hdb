@@ -159,52 +159,6 @@ impl Process {
         todo!()
     }
 
-    pub fn get_registers(&self) -> Result<libc::user_regs_struct, std::io::Error> {
-        let mut regs = libc::user_regs_struct {
-            r15: 0,
-            r14: 0,
-            r13: 0,
-            r12: 0,
-            rbp: 0,
-            rbx: 0,
-            r11: 0,
-            r10: 0,
-            r9: 0,
-            r8: 0,
-            rax: 0,
-            rcx: 0,
-            rdx: 0,
-            rsi: 0,
-            rdi: 0,
-            orig_rax: 0,
-            rip: 0,
-            cs: 0,
-            eflags: 0,
-            rsp: 0,
-            ss: 0,
-            fs_base: 0,
-            gs_base: 0,
-            ds: 0,
-            es: 0,
-            fs: 0,
-            gs: 0,
-        };
-
-        if unsafe {
-            libc::ptrace(
-                libc::PTRACE_GETREGS,
-                self.pid,
-                std::ptr::null() as *const c_void,
-                &mut regs as *mut libc::user_regs_struct as *mut c_void,
-            )
-        } < 0
-        {
-            return Err(std::io::Error::last_os_error());
-        }
-
-        Ok(regs)
-    }
-
     #[cfg(test)]
     fn stat(&self) -> char {
         let path = format!("/proc/{}/stat", self.pid);
