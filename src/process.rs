@@ -4,9 +4,9 @@ use std::{ffi::c_void, os::unix::process::CommandExt, process::Command};
 use crate::register::Registers;
 
 pub struct Process {
+    _child: Option<std::process::Child>,
     pid: i32,
     state: ProcessState,
-    terminate_on_drop: bool,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -17,69 +17,38 @@ pub enum ProcessState {
     Terminated,
 }
 
-impl Drop for Process {
-    fn drop(&mut self) {
-        if self.state == ProcessState::Running {
-            unsafe { libc::kill(self.pid, libc::SIGSTOP) };
-            self.state = ProcessState::Stopped;
-            let _ = self.wait_on_signal();
-        }
-        unsafe {
-            libc::ptrace(
-                libc::PTRACE_DETACH,
-                self.pid,
-                std::ptr::null() as *const c_void,
-                std::ptr::null() as *const c_void,
-            );
-            libc::kill(self.pid, libc::SIGCONT);
-        }
-
-        if self.terminate_on_drop {
-            let _ = unsafe { libc::kill(self.pid, libc::SIGKILL) };
-            let _ = self.wait_on_signal();
-        }
-    }
-}
-
 impl Process {
     pub fn spawn(mut command: Command, stdout: Option<i32>) -> Result<Process, std::io::Error> {
-        let pid = unsafe { libc::fork() };
-
-        if pid < 0 {
-            // Fork failed
-            let err = std::io::Error::last_os_error();
-            panic!("{}", err);
-        }
-
-        if pid == 0 {
-            // In child process
-
-            if let Some(fd) = stdout {
-                unsafe {
+        unsafe {
+            command.pre_exec(move || {
+                if let Some(fd) = stdout {
                     libc::close(libc::STDOUT_FILENO);
                     libc::dup2(fd, libc::STDOUT_FILENO);
                 }
-            }
 
-            if unsafe {
-                libc::ptrace(
+                if libc::ptrace(
                     libc::PTRACE_TRACEME,
                     0,
                     std::ptr::null() as *const c_void,
                     std::ptr::null() as *const c_void,
-                )
-            } < 0
-            {
-                panic!("{}", std::io::Error::last_os_error());
-            }
-            unreachable!("{}", command.exec());
-        }
+                ) < 0
+                {
+                    return Err(std::io::Error::last_os_error());
+                }
+
+                std::io::Result::Ok(())
+            })
+        };
+
+        let child = command.spawn()?;
+
+        let pid = child.id() as i32;
 
         // In parent process
         let mut proc = Process {
+            _child: Some(child),
             pid,
             state: ProcessState::Stopped,
-            terminate_on_drop: true,
         };
         proc.wait_on_signal()?;
         Ok(proc)
@@ -99,9 +68,9 @@ impl Process {
         }
 
         let mut proc = Process {
+            _child: None,
             pid,
             state: ProcessState::Stopped,
-            terminate_on_drop: false,
         };
         proc.wait_on_signal()?;
         Ok(proc)

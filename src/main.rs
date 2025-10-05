@@ -39,11 +39,12 @@ fn main() -> anyhow::Result<()> {
     let mut command = std::process::Command::new(commands.next().unwrap());
     command.args(commands);
 
-    let mut process = process::Process::spawn(command, None)?;
-
     // Hack: Disable rustyline's pty usage
     // unsafe { std::env::set_var("TERM", "dumb") };
     let mut rl = DefaultEditor::new()?;
+
+    let mut process = process::Process::spawn(command, None)?;
+
     loop {
         let line = rl.readline(">> ")?;
 
