@@ -85,6 +85,18 @@ impl Process {
         if ret < 0 {
             return Err(std::io::Error::last_os_error());
         }
+
+        // TODO: revisit this logic. This is from AI.
+        self.state = if libc::WIFEXITED(status) {
+            ProcessState::Exited
+        } else if libc::WIFSIGNALED(status) {
+            ProcessState::Terminated
+        } else if libc::WIFSTOPPED(status) {
+            ProcessState::Stopped
+        } else {
+            panic!("Unknown waitpid status: {status}");
+        };
+
         Ok(())
     }
 
@@ -220,9 +232,14 @@ mod tests {
         let regs = process.read_registers().unwrap();
         assert_eq!(
             regs.read_by_name("r13"),
-            Some(RegisterValue::Uint(0xcafecafe))
+            Some(RegisterValue::U64(0xcafecafe))
         );
 
         process.resume().unwrap();
+        process.wait_on_signal().unwrap();
+        let regs = process.read_registers().unwrap();
+        assert_eq!(regs.read_by_name("r13b"), Some(RegisterValue::U8(42)));
+
+        return;
     }
 }
