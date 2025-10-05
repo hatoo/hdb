@@ -10,7 +10,7 @@ struct Opt {
 }
 
 #[derive(Parser, Debug)]
-#[clap(infer_subcommands = true)]
+#[clap(infer_subcommands = true, override_usage = "<COMMAND>")]
 struct UserInput {
     #[command(subcommand)]
     command: Commands,
@@ -52,7 +52,7 @@ fn main() -> anyhow::Result<()> {
                 process.wait_on_signal()?;
             }
             Err(e) => {
-                eprintln!("{}", e);
+                e.print()?;
             }
         }
     }
