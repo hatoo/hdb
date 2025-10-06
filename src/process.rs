@@ -4,6 +4,8 @@ use std::{ffi::c_void, os::unix::process::CommandExt, process::Command};
 use crate::register::Registers;
 
 pub struct Process {
+    /// The child process, if we spawned it ourselves.
+    /// None if we attached to an existing process.
     child: Option<std::process::Child>,
     pid: i32,
     state: ProcessState,

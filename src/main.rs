@@ -31,7 +31,7 @@ enum Commands {
     },
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let opt = Opt::parse();
 
     let mut commands = opt.commands.iter();
@@ -49,7 +49,6 @@ fn main() -> anyhow::Result<()> {
         let line = match line {
             reedline::Signal::Success(input) => input,
             reedline::Signal::CtrlC | reedline::Signal::CtrlD => {
-                // println!("Exiting...");
                 break;
             }
         };
