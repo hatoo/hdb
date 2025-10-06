@@ -12,6 +12,7 @@ pub enum RegisterFormat {
     Vector,
 }
 
+#[non_exhaustive]
 pub struct RegisterInfo {
     pub name: &'static str,
     pub reg_type: RegisterType,
@@ -45,6 +46,14 @@ impl RegisterValue {
         RegisterValue::U64(v as u64)
     }
 }
+#[cfg(target_arch = "x86_64")]
+pub const PC: RegisterInfo = RegisterInfo {
+    name: "rip",
+    reg_type: RegisterType::Gpr,
+    format: RegisterFormat::Uint,
+    offset: std::mem::offset_of!(libc::user, regs.rip),
+    size: 8,
+};
 
 #[cfg(target_arch = "x86_64")]
 pub const REGISTERS: &[RegisterInfo] = &[
@@ -118,8 +127,7 @@ pub enum RegisterAccessError {
 }
 
 impl Registers {
-    pub fn read_by_name(&self, name: &str) -> Option<RegisterValue> {
-        let reg = REGISTERS.iter().find(|r| r.name == name)?;
+    pub fn read(&self, reg: &RegisterInfo) -> RegisterValue {
         let ptr = (&self.user.regs as *const _ as *const u8).wrapping_add(reg.offset);
         let value = match reg.size {
             8 => RegisterValue::U64(unsafe { *(ptr as *const u64) }),
@@ -132,21 +140,17 @@ impl Registers {
 
                 RegisterValue::U128(u128::from_le_bytes(bytes))
             }
-            _ => return None,
+            _ => unreachable!(),
         };
 
-        Some(value)
+        value
     }
 
-    pub fn write_by_name(
+    pub fn write(
         &mut self,
-        name: &str,
+        reg: &RegisterInfo,
         value: RegisterValue,
     ) -> Result<(), RegisterAccessError> {
-        let reg = REGISTERS
-            .iter()
-            .find(|r| r.name == name)
-            .ok_or(RegisterAccessError::UnknownRegister)?;
         let bytes = value.to_le_bytes();
         if reg.size < bytes.len() {
             return Err(RegisterAccessError::InvalidValue);

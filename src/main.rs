@@ -82,11 +82,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("{:?}", debugger.cont()?);
                 }
                 Commands::Read { name } => {
-                    if let Some(value) = debugger.read_register_by_name(&name)? {
-                        println!("{name} = {value:?}");
-                    } else {
-                        println!("Unknown register: {name}");
-                    }
+                    let info = REGISTERS.iter().find(|r| r.name == name).unwrap();
+                    let value = debugger.read_register(info)?;
+                    println!("{:?}", value);
                 }
                 Commands::Write { name, value } => {
                     let reg_info = REGISTERS.iter().find(|r| r.name == name).unwrap();
@@ -96,7 +94,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         16 => register::RegisterValue::U128(parse_int::parse(&value)?),
                         _ => unreachable!(),
                     };
-                    debugger.write_register_by_name(&name, reg_value)?;
+
+                    debugger.write_register(reg_info, reg_value)?;
                 }
                 Commands::BreakPoint { command } => match command {
                     BreakPointCommands::Set { addr } => {

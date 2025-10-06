@@ -202,6 +202,22 @@ mod tests {
 
     use super::*;
 
+    fn read_reg_by_name(regs: &Registers, name: &str) -> RegisterValue {
+        let reg = crate::register::REGISTERS
+            .iter()
+            .find(|r| r.name == name)
+            .unwrap();
+        regs.read(reg)
+    }
+
+    fn write_reg_by_name(regs: &mut Registers, name: &str, value: RegisterValue) {
+        let reg = crate::register::REGISTERS
+            .iter()
+            .find(|r| r.name == name)
+            .unwrap();
+        regs.write(reg, value).unwrap();
+    }
+
     #[test]
     fn test_resume() {
         let mut command = Command::new("sleep");
@@ -240,22 +256,22 @@ mod tests {
         process.resume().unwrap();
         process.wait_on_signal().unwrap();
         assert_eq!(
-            process.read_registers().unwrap().read_by_name("r13"),
-            Some(RegisterValue::U64(0xcafecafe))
+            read_reg_by_name(&process.read_registers().unwrap(), "r13"),
+            RegisterValue::U64(0xcafecafe)
         );
 
         process.resume().unwrap();
         process.wait_on_signal().unwrap();
         assert_eq!(
-            process.read_registers().unwrap().read_by_name("r13b"),
-            Some(RegisterValue::U8(42))
+            read_reg_by_name(&process.read_registers().unwrap(), "r13b"),
+            RegisterValue::U8(42)
         );
 
         process.resume().unwrap();
         process.wait_on_signal().unwrap();
         assert_eq!(
-            process.read_registers().unwrap().read_by_name("xmm0"),
-            Some(RegisterValue::U64(0xba5eba11))
+            read_reg_by_name(&process.read_registers().unwrap(), "xmm0"),
+            RegisterValue::U64(0xba5eba11)
         );
 
         process.resume().unwrap();
@@ -293,8 +309,7 @@ mod tests {
         process.wait_on_signal().unwrap();
 
         let mut regs = process.read_registers().unwrap();
-        regs.write_by_name("rsi", RegisterValue::U64(0xcafecafe))
-            .unwrap();
+        write_reg_by_name(&mut regs, "rsi", RegisterValue::U64(0xcafecafe));
         process.write_registers(&regs).unwrap();
 
         process.resume().unwrap();

@@ -1,4 +1,4 @@
-use crate::process::Process;
+use crate::{process::Process, register::RegisterInfo};
 
 pub struct Debugger {
     process: crate::process::Process,
@@ -98,31 +98,34 @@ impl Debugger {
 
     pub fn get_pc(&mut self) -> Result<usize, std::io::Error> {
         // TODO: Handle non-x86_64 architectures
-        let rip = self.read_register_by_name("rip")?.unwrap().as_usize();
+        let rip = self.read_register(&crate::register::PC)?.as_usize();
         Ok(rip)
     }
 
     pub fn set_pc(&mut self, pc: usize) -> Result<(), std::io::Error> {
         // TODO: Handle non-x86_64 architectures
-        self.write_register_by_name("rip", crate::register::RegisterValue::U64(pc as u64))?;
+        self.write_register(
+            &crate::register::PC,
+            crate::register::RegisterValue::U64(pc as u64),
+        )?;
         Ok(())
     }
 
-    pub fn read_register_by_name(
+    pub fn read_register(
         &mut self,
-        name: &str,
-    ) -> Result<Option<crate::register::RegisterValue>, std::io::Error> {
+        reg: &RegisterInfo,
+    ) -> Result<crate::register::RegisterValue, std::io::Error> {
         let regs = self.process.read_registers()?;
-        Ok(regs.read_by_name(name))
+        Ok(regs.read(reg))
     }
 
-    pub fn write_register_by_name(
+    pub fn write_register(
         &mut self,
-        name: &str,
+        reg: &RegisterInfo,
         value: crate::register::RegisterValue,
     ) -> Result<(), std::io::Error> {
         let mut regs = self.process.read_registers()?;
-        regs.write_by_name(name, value).unwrap();
+        regs.write(reg, value).unwrap();
         self.process.write_registers(&regs)?;
 
         Ok(())
