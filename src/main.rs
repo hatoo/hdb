@@ -84,8 +84,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(input) => match input.command {
                 Commands::Step { count } => {
                     for _ in 0..count {
-                        println!("{:?}", debugger.step()?);
-                        println!("PC = {:#x}", debugger.get_pc()?);
+                        // println!("{:?}", debugger.step()?);
+                        // println!("PC = {:#x}", debugger.get_pc()?);
+                        debugger.step()?;
                     }
                 }
                 Commands::Continue => {
