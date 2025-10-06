@@ -1,6 +1,8 @@
+use crate::process::Process;
+
 pub struct Debugger {
     process: crate::process::Process,
-    breakpoints: Vec<BreakPoint>,
+    breakpoints: BreakPoints,
 }
 
 pub struct BreakPoint {
@@ -8,11 +10,60 @@ pub struct BreakPoint {
     orig_byte: u8,
 }
 
+impl BreakPoint {
+    pub fn new(process: &mut Process, addr: usize) -> Result<Self, std::io::Error> {
+        let orig_data = process.read(addr)?;
+        let orig_byte = (orig_data & 0xff) as u8;
+        let int3_data = (orig_data & !0xff) | 0xcc;
+        process.write(addr, int3_data)?;
+
+        Ok(Self { addr, orig_byte })
+    }
+
+    pub fn enable(&mut self, process: &mut Process) -> Result<(), std::io::Error> {
+        let orig_data = process.read(self.addr)?;
+        let int3_data = (orig_data & !0xff) | 0xcc;
+        self.orig_byte = (orig_data & 0xff) as u8;
+        process.write(self.addr, int3_data)?;
+        Ok(())
+    }
+
+    pub fn disable(&self, process: &mut Process) -> Result<(), std::io::Error> {
+        let orig_data = process.read(self.addr)?;
+        let restored_data = (orig_data & !0xff) | (self.orig_byte as i64);
+        process.write(self.addr, restored_data)?;
+        Ok(())
+    }
+}
+
+pub struct BreakPoints {
+    points: Vec<BreakPoint>,
+}
+
+impl BreakPoints {
+    pub fn new() -> Self {
+        Self { points: Vec::new() }
+    }
+
+    pub fn add(&mut self, process: &mut Process, addr: usize) -> Result<(), std::io::Error> {
+        if self.points.iter().any(|bp| bp.addr == addr) {
+            return Ok(());
+        }
+
+        self.points.push(BreakPoint::new(process, addr)?);
+        Ok(())
+    }
+
+    pub fn break_point_at(&mut self, addr: usize) -> Option<&mut BreakPoint> {
+        self.points.iter_mut().find(|bp| bp.addr == addr)
+    }
+}
+
 impl Debugger {
     pub fn new(process: crate::process::Process) -> Self {
         Self {
             process,
-            breakpoints: Vec::new(),
+            breakpoints: BreakPoints::new(),
         }
     }
 
@@ -23,18 +74,21 @@ impl Debugger {
     }
 
     pub fn cont(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
+        {
+            let pc = self.get_pc()?;
+            if let Some(breakpoint) = self.breakpoints.break_point_at(pc) {
+                self.process.single_step()?;
+                breakpoint.enable(&mut self.process)?;
+            }
+        }
+
         self.process.resume()?;
         let status = self.process.wait_on_signal()?;
 
         if let nix::sys::wait::WaitStatus::Stopped(_, nix::sys::signal::Signal::SIGTRAP) = status {
-            // Hit a breakpoint
-            // Restore original byte at the breakpoint
             let pc = self.get_pc()? - 1;
-            if let Some(breakpoint) = self.breakpoints.iter().find(|bp| bp.addr == pc) {
-                let orig_data = self.process.read(pc)?;
-                let restored_data = (orig_data & !0xff) | (breakpoint.orig_byte as i64);
-                self.process.write(pc, restored_data)?;
-                // Move instruction pointer back to the original instruction
+            if let Some(breakpoint) = self.breakpoints.break_point_at(pc) {
+                breakpoint.disable(&mut self.process)?;
                 self.set_pc(pc)?;
             }
         }
@@ -75,21 +129,7 @@ impl Debugger {
     }
 
     pub fn set_breakpoint(&mut self, addr: usize) -> Result<(), std::io::Error> {
-        if self
-            .breakpoints
-            .iter()
-            .any(|breakpoint| breakpoint.addr == addr)
-        {
-            return Ok(());
-        }
-
-        let orig_data = self.process.read(addr)?;
-        let orig_byte = (orig_data & 0xff) as u8;
-        let int3_data = (orig_data & !0xff) | 0xcc;
-        self.process.write(addr, int3_data)?;
-
-        self.breakpoints.push(BreakPoint { addr, orig_byte });
-
+        self.breakpoints.add(&mut self.process, addr)?;
         Ok(())
     }
 }

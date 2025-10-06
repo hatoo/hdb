@@ -173,6 +173,12 @@ impl Process {
         Ok(())
     }
 
+    pub fn single_step(&mut self) -> Result<(), std::io::Error> {
+        nix::sys::ptrace::step(self.pid(), None)?;
+        self.wait_on_signal()?;
+        Ok(())
+    }
+
     #[cfg(test)]
     fn stat(&self) -> char {
         let path = format!("/proc/{}/stat", self.pid);
