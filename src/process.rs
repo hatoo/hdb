@@ -35,6 +35,10 @@ impl Process {
     pub fn spawn(mut command: Command) -> Result<Process, std::io::Error> {
         unsafe {
             command.pre_exec(move || {
+                // Disable ASLR for the child process
+                nix::sys::personality::set(nix::sys::personality::Persona::ADDR_NO_RANDOMIZE)?;
+
+                // Signal on execve
                 nix::sys::ptrace::traceme()?;
                 Ok(())
             })
