@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 
 use crate::register::REGISTERS;
 
+mod debugger;
 mod process;
 mod register;
 
@@ -41,7 +42,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let prompt = reedline::DefaultPrompt::default();
     let mut rl = reedline::Reedline::create();
 
-    let mut process = process::Process::spawn(command)?;
+    let process = process::Process::spawn(command)?;
+    let mut debugger = debugger::Debugger::new(process);
 
     loop {
         let line = rl.read_line(&prompt)?;
@@ -66,19 +68,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match UserInput::try_parse_from(cmd) {
             Ok(input) => match input.command {
                 Commands::Continue => {
-                    process.resume()?;
-                    process.wait_on_signal()?;
+                    debugger.cont()?;
                 }
                 Commands::Read { name } => {
-                    let regs = process.read_registers()?;
-                    if let Some(value) = regs.read_by_name(&name) {
+                    if let Some(value) = debugger.read_register(&name)? {
                         println!("{name} = {value:?}");
                     } else {
                         println!("Unknown register: {name}");
                     }
                 }
                 Commands::Write { name, value } => {
-                    let mut regs = process.read_registers()?;
                     let reg_info = REGISTERS.iter().find(|r| r.name == name).unwrap();
                     let reg_value = match reg_info.size {
                         1 => register::RegisterValue::U8(value.parse()?),
@@ -86,8 +85,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         16 => register::RegisterValue::U128(value.parse()?),
                         _ => unreachable!(),
                     };
-                    regs.write_by_name(&name, reg_value)?;
-                    process.write_registers(&regs)?;
+                    debugger.write_register(&name, reg_value)?;
                 }
             },
             Err(e) => {

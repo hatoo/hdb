@@ -35,6 +35,13 @@ pub enum RegisterValue {
 #[cfg(target_arch = "x86_64")]
 pub const REGISTERS: &[RegisterInfo] = &[
     RegisterInfo {
+        name: "rip",
+        reg_type: RegisterType::Gpr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, regs.rip),
+        size: 8,
+    },
+    RegisterInfo {
         name: "rax",
         reg_type: RegisterType::Gpr,
         format: RegisterFormat::Uint,
