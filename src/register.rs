@@ -118,14 +118,6 @@ impl RegisterValue {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum RegisterAccessError {
-    #[error("Unknown register")]
-    UnknownRegister,
-    #[error("Invalid value for the register")]
-    InvalidValue,
-}
-
 impl Registers {
     pub fn read(&self, reg: &RegisterInfo) -> RegisterValue {
         let ptr = (&self.user.regs as *const _ as *const u8).wrapping_add(reg.offset);
@@ -146,19 +138,14 @@ impl Registers {
         value
     }
 
-    pub fn write(
-        &mut self,
-        reg: &RegisterInfo,
-        value: RegisterValue,
-    ) -> Result<(), RegisterAccessError> {
-        let bytes = value.to_le_bytes();
-        if reg.size < bytes.len() {
-            return Err(RegisterAccessError::InvalidValue);
+    pub fn write(&mut self, reg: &RegisterInfo, value: RegisterValue) {
+        let mut bytes = value.to_le_bytes();
+        if reg.size > bytes.len() {
+            bytes.resize(reg.size, 0);
         }
         let ptr = (&mut self.user as *mut _ as *mut u8).wrapping_add(reg.offset);
         unsafe {
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, reg.size);
         }
-        Ok(())
     }
 }

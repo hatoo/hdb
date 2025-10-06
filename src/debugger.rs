@@ -125,7 +125,7 @@ impl Debugger {
         value: crate::register::RegisterValue,
     ) -> Result<(), std::io::Error> {
         let mut regs = self.process.read_registers()?;
-        regs.write(reg, value).unwrap();
+        regs.write(reg, value);
         self.process.write_registers(&regs)?;
 
         Ok(())

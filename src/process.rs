@@ -215,7 +215,7 @@ mod tests {
             .iter()
             .find(|r| r.name == name)
             .unwrap();
-        regs.write(reg, value).unwrap();
+        regs.write(reg, value);
     }
 
     #[test]
