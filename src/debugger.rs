@@ -10,6 +10,7 @@ pub struct BreakPoint {
     orig_byte: u8,
 }
 
+#[cfg(target_arch = "x86_64")]
 impl BreakPoint {
     pub fn new(process: &mut Process, addr: usize) -> Result<Self, std::io::Error> {
         let orig_data = process.read(addr)?;
