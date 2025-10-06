@@ -98,13 +98,11 @@ impl Debugger {
     }
 
     pub fn get_pc(&mut self) -> Result<usize, std::io::Error> {
-        // TODO: Handle non-x86_64 architectures
         let rip = self.read_register(&crate::register::PC)?.as_usize();
         Ok(rip)
     }
 
     pub fn set_pc(&mut self, pc: usize) -> Result<(), std::io::Error> {
-        // TODO: Handle non-x86_64 architectures
         self.write_register(
             &crate::register::PC,
             crate::register::RegisterValue::U64(pc as u64),

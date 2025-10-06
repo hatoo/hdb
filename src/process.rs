@@ -1,4 +1,3 @@
-use core::panic;
 use std::{ffi::c_void, os::unix::process::CommandExt, process::Command};
 
 use crate::register::Registers;
@@ -8,15 +7,6 @@ pub struct Process {
     /// None if we attached to an existing process.
     child: Option<std::process::Child>,
     pid: i32,
-    state: ProcessState,
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub enum ProcessState {
-    Running,
-    Stopped,
-    Exited,
-    Terminated,
 }
 
 impl Drop for Process {
@@ -58,7 +48,6 @@ impl Process {
         let mut proc = Process {
             child: Some(child),
             pid,
-            state: ProcessState::Stopped,
         };
         proc.wait_on_signal()?;
         Ok(proc)
@@ -67,34 +56,18 @@ impl Process {
     pub fn attach(pid: i32) -> Result<Process, std::io::Error> {
         nix::sys::ptrace::attach(nix::unistd::Pid::from_raw(pid))?;
 
-        let mut proc = Process {
-            child: None,
-            pid,
-            state: ProcessState::Stopped,
-        };
+        let mut proc = Process { child: None, pid };
         proc.wait_on_signal()?;
         Ok(proc)
     }
 
     pub fn wait_on_signal(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
         let status = nix::sys::wait::waitpid(self.pid(), None)?;
-
-        // TODO: revisit this logic. This is from AI.
-        self.state = match status {
-            nix::sys::wait::WaitStatus::Exited(_, _)
-            | nix::sys::wait::WaitStatus::Signaled(_, _, _) => ProcessState::Exited,
-            nix::sys::wait::WaitStatus::Stopped(_, _) => ProcessState::Stopped,
-            nix::sys::wait::WaitStatus::Continued(_) => ProcessState::Running,
-            _ => panic!("Unexpected wait status: {:?}", status),
-        };
-
         Ok(status)
     }
 
     pub fn resume(&mut self) -> Result<(), std::io::Error> {
         nix::sys::ptrace::cont(self.pid(), None)?;
-        self.state = ProcessState::Running;
-
         Ok(())
     }
 
