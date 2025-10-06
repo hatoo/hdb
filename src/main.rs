@@ -74,13 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
-        let cmd = {
-            let mut cmd: Vec<_> = line.split_whitespace().collect();
-            cmd.insert(0, "input");
-            cmd
-        };
-
-        match UserInput::try_parse_from(cmd) {
+        match UserInput::try_parse_from(std::iter::once("input").chain(line.split_whitespace())) {
             Ok(input) => match input.command {
                 Commands::Step { count } => {
                     for _ in 0..count {
