@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let process = process::Process::spawn(command)?;
     let mut debugger = debugger::Debugger::new(process);
 
-    println!("Process started. PID={}", unsafe { debugger.raw_pid() });
+    println!("Process started. PID = {}", unsafe { debugger.raw_pid() });
 
     loop {
         let line = rl.read_line(&prompt)?;
