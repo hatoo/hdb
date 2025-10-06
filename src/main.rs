@@ -20,6 +20,10 @@ struct UserInput {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    Step {
+        #[clap(default_value_t = 1)]
+        count: usize,
+    },
     Continue,
     Read {
         #[clap(value_parser=clap::builder::PossibleValuesParser::new(REGISTERS.iter().map(|r| r.name)))]
@@ -78,6 +82,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         match UserInput::try_parse_from(cmd) {
             Ok(input) => match input.command {
+                Commands::Step { count } => {
+                    for _ in 0..count {
+                        println!("{:?}", debugger.step()?);
+                        println!("PC = {:#x}", debugger.get_pc()?);
+                    }
+                }
                 Commands::Continue => {
                     println!("{:?}", debugger.cont()?);
                 }

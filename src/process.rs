@@ -148,10 +148,10 @@ impl Process {
         Ok(())
     }
 
-    pub fn single_step(&mut self) -> Result<(), std::io::Error> {
+    pub fn single_step(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
         nix::sys::ptrace::step(self.pid(), None)?;
-        self.wait_on_signal()?;
-        Ok(())
+        let status = self.wait_on_signal()?;
+        Ok(status)
     }
 
     #[cfg(test)]

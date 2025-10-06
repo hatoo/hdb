@@ -74,6 +74,23 @@ impl Debugger {
         unsafe { self.process.raw_pid() }
     }
 
+    pub fn step(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
+        let pc = self.get_pc()?;
+        let mut break_point = self.breakpoints.break_point_at(pc);
+
+        if let Some(breakpoint) = break_point.as_mut() {
+            breakpoint.disable(&mut self.process)?;
+        }
+
+        let status = self.process.single_step()?;
+
+        if let Some(breakpoint) = break_point.as_mut() {
+            breakpoint.enable(&mut self.process)?;
+        }
+
+        Ok(status)
+    }
+
     pub fn cont(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
         {
             let pc = self.get_pc()?;
