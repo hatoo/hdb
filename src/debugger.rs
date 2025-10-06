@@ -98,17 +98,17 @@ impl Debugger {
 
     pub fn get_pc(&mut self) -> Result<usize, std::io::Error> {
         // TODO: Handle non-x86_64 architectures
-        let rip = self.read_register("rip")?.unwrap().as_usize();
+        let rip = self.read_register_by_name("rip")?.unwrap().as_usize();
         Ok(rip)
     }
 
     pub fn set_pc(&mut self, pc: usize) -> Result<(), std::io::Error> {
         // TODO: Handle non-x86_64 architectures
-        self.write_register("rip", crate::register::RegisterValue::U64(pc as u64))?;
+        self.write_register_by_name("rip", crate::register::RegisterValue::U64(pc as u64))?;
         Ok(())
     }
 
-    pub fn read_register(
+    pub fn read_register_by_name(
         &mut self,
         name: &str,
     ) -> Result<Option<crate::register::RegisterValue>, std::io::Error> {
@@ -116,7 +116,7 @@ impl Debugger {
         Ok(regs.read_by_name(name))
     }
 
-    pub fn write_register(
+    pub fn write_register_by_name(
         &mut self,
         name: &str,
         value: crate::register::RegisterValue,
