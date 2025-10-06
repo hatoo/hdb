@@ -32,6 +32,12 @@ impl Process {
         nix::unistd::Pid::from_raw(self.pid)
     }
 
+    /// Do not call syscalls with this pid for thread safety.
+    /// You should use other methods of this struct.
+    pub unsafe fn raw_pid(&self) -> i32 {
+        self.pid
+    }
+
     pub fn spawn(mut command: Command) -> Result<Process, std::io::Error> {
         unsafe {
             command.pre_exec(move || {
@@ -70,7 +76,7 @@ impl Process {
         Ok(proc)
     }
 
-    pub fn wait_on_signal(&mut self) -> Result<(), std::io::Error> {
+    pub fn wait_on_signal(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
         let status = nix::sys::wait::waitpid(self.pid(), None)?;
 
         // TODO: revisit this logic. This is from AI.
@@ -82,7 +88,7 @@ impl Process {
             _ => panic!("Unexpected wait status: {:?}", status),
         };
 
-        Ok(())
+        Ok(status)
     }
 
     pub fn resume(&mut self) -> Result<(), std::io::Error> {
@@ -155,6 +161,16 @@ impl Process {
         }
 
         todo!()
+    }
+
+    pub fn read(&mut self, addr: usize) -> Result<i64, std::io::Error> {
+        let data = nix::sys::ptrace::read(self.pid(), addr as *mut c_void)?;
+        Ok(data)
+    }
+
+    pub fn write(&mut self, addr: usize, data: i64) -> Result<(), std::io::Error> {
+        nix::sys::ptrace::write(self.pid(), addr as *mut c_void, data as _)?;
+        Ok(())
     }
 
     #[cfg(test)]

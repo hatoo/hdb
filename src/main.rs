@@ -30,6 +30,15 @@ enum Commands {
         name: String,
         value: String,
     },
+    BreakPoint {
+        #[command(subcommand)]
+        command: BreakPointCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum BreakPointCommands {
+    Set { addr: String },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,6 +53,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let process = process::Process::spawn(command)?;
     let mut debugger = debugger::Debugger::new(process);
+
+    println!("Process started. PID={}", unsafe { debugger.raw_pid() });
 
     loop {
         let line = rl.read_line(&prompt)?;
@@ -80,13 +91,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Commands::Write { name, value } => {
                     let reg_info = REGISTERS.iter().find(|r| r.name == name).unwrap();
                     let reg_value = match reg_info.size {
-                        1 => register::RegisterValue::U8(value.parse()?),
-                        8 => register::RegisterValue::U64(value.parse()?),
-                        16 => register::RegisterValue::U128(value.parse()?),
+                        1 => register::RegisterValue::U8(parse_int::parse(&value)?),
+                        8 => register::RegisterValue::U64(parse_int::parse(&value)?),
+                        16 => register::RegisterValue::U128(parse_int::parse(&value)?),
                         _ => unreachable!(),
                     };
                     debugger.write_register(&name, reg_value)?;
                 }
+                Commands::BreakPoint { command } => match command {
+                    BreakPointCommands::Set { addr } => {
+                        let addr = parse_int::parse::<usize>(&addr)?;
+                        debugger.set_breakpoint(addr)?;
+                    }
+                },
             },
             Err(e) => {
                 e.print()?;

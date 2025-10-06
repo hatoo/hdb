@@ -32,6 +32,20 @@ pub enum RegisterValue {
     U128(u128),
 }
 
+impl RegisterValue {
+    pub fn as_usize(&self) -> usize {
+        match self {
+            RegisterValue::U64(v) => *v as usize,
+            RegisterValue::U8(v) => *v as usize,
+            RegisterValue::U128(v) => *v as usize,
+        }
+    }
+
+    pub fn from_usize(v: usize) -> Self {
+        RegisterValue::U64(v as u64)
+    }
+}
+
 #[cfg(target_arch = "x86_64")]
 pub const REGISTERS: &[RegisterInfo] = &[
     RegisterInfo {
