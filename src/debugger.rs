@@ -22,7 +22,7 @@ impl Debugger {
         unsafe { self.process.raw_pid() }
     }
 
-    pub fn cont(&mut self) -> Result<(), std::io::Error> {
+    pub fn cont(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
         self.process.resume()?;
         let status = self.process.wait_on_signal()?;
 
@@ -39,7 +39,7 @@ impl Debugger {
             }
         }
 
-        Ok(())
+        Ok(status)
     }
 
     pub fn get_pc(&mut self) -> Result<usize, std::io::Error> {

@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match UserInput::try_parse_from(cmd) {
             Ok(input) => match input.command {
                 Commands::Continue => {
-                    debugger.cont()?;
+                    println!("{:?}", debugger.cont()?);
                 }
                 Commands::Read { name } => {
                     if let Some(value) = debugger.read_register(&name)? {
