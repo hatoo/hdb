@@ -28,19 +28,14 @@ impl Drop for Process {
 }
 
 impl Process {
+    fn pid(&self) -> nix::unistd::Pid {
+        nix::unistd::Pid::from_raw(self.pid)
+    }
+
     pub fn spawn(mut command: Command) -> Result<Process, std::io::Error> {
         unsafe {
             command.pre_exec(move || {
-                if libc::ptrace(
-                    libc::PTRACE_TRACEME,
-                    0,
-                    std::ptr::null() as *const c_void,
-                    std::ptr::null() as *const c_void,
-                ) < 0
-                {
-                    return Err(std::io::Error::last_os_error());
-                }
-
+                nix::sys::ptrace::traceme()?;
                 Ok(())
             })
         };
@@ -60,17 +55,7 @@ impl Process {
     }
 
     pub fn attach(pid: i32) -> Result<Process, std::io::Error> {
-        if unsafe {
-            libc::ptrace(
-                libc::PTRACE_ATTACH,
-                pid,
-                std::ptr::null() as *const c_void,
-                std::ptr::null() as *const c_void,
-            )
-        } < 0
-        {
-            return Err(std::io::Error::last_os_error());
-        }
+        nix::sys::ptrace::attach(nix::unistd::Pid::from_raw(pid))?;
 
         let mut proc = Process {
             child: None,
@@ -82,43 +67,24 @@ impl Process {
     }
 
     pub fn wait_on_signal(&mut self) -> Result<(), std::io::Error> {
-        let pid = self.pid;
-        let mut status: i32 = 0;
-
-        let ret = unsafe { libc::waitpid(pid, &mut status as *mut i32, 0) };
-        if ret < 0 {
-            return Err(std::io::Error::last_os_error());
-        }
+        let status = nix::sys::wait::waitpid(self.pid(), None)?;
 
         // TODO: revisit this logic. This is from AI.
-        self.state = if libc::WIFEXITED(status) {
-            ProcessState::Exited
-        } else if libc::WIFSIGNALED(status) {
-            ProcessState::Terminated
-        } else if libc::WIFSTOPPED(status) {
-            ProcessState::Stopped
-        } else {
-            panic!("Unknown waitpid status: {status}");
+        self.state = match status {
+            nix::sys::wait::WaitStatus::Exited(_, _)
+            | nix::sys::wait::WaitStatus::Signaled(_, _, _) => ProcessState::Exited,
+            nix::sys::wait::WaitStatus::Stopped(_, _) => ProcessState::Stopped,
+            nix::sys::wait::WaitStatus::Continued(_) => ProcessState::Running,
+            _ => panic!("Unexpected wait status: {:?}", status),
         };
 
         Ok(())
     }
 
     pub fn resume(&mut self) -> Result<(), std::io::Error> {
-        let pid = self.pid;
-
-        if unsafe {
-            libc::ptrace(
-                libc::PTRACE_CONT,
-                pid,
-                std::ptr::null() as *const c_void,
-                std::ptr::null() as *const c_void,
-            )
-        } < 0
-        {
-            return Err(std::io::Error::last_os_error());
-        }
+        nix::sys::ptrace::cont(self.pid(), None)?;
         self.state = ProcessState::Running;
+
         Ok(())
     }
 
@@ -127,44 +93,16 @@ impl Process {
         {
             let mut user: libc::user = unsafe { std::mem::zeroed() };
 
-            if unsafe {
-                libc::ptrace(
-                    libc::PTRACE_GETREGS,
-                    self.pid,
-                    std::ptr::null() as *const c_void,
-                    &mut user.regs as *mut _ as *mut c_void,
-                )
-            } < 0
-            {
-                return Err(std::io::Error::last_os_error());
-            }
-
-            if unsafe {
-                libc::ptrace(
-                    libc::PTRACE_GETFPREGS,
-                    self.pid,
-                    std::ptr::null() as *const c_void,
-                    &mut user.i387 as *mut _ as *mut c_void,
-                )
-            } < 0
-            {
-                return Err(std::io::Error::last_os_error());
-            }
+            user.regs =
+                nix::sys::ptrace::getregset::<nix::sys::ptrace::regset::NT_PRSTATUS>(self.pid())?;
+            user.i387 =
+                nix::sys::ptrace::getregset::<nix::sys::ptrace::regset::NT_PRFPREG>(self.pid())?;
 
             for i in 0..8 {
-                let data = unsafe {
-                    libc::ptrace(
-                        libc::PTRACE_PEEKUSER,
-                        self.pid,
-                        std::mem::offset_of!(libc::user, u_debugreg).wrapping_add(i * 8)
-                            as *const c_void,
-                        std::ptr::null() as *const c_void,
-                    )
-                };
-
-                if std::io::Error::last_os_error().raw_os_error().unwrap_or(0) != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
+                let data = nix::sys::ptrace::read_user(
+                    self.pid(),
+                    (std::mem::offset_of!(libc::user, u_debugreg) + i * 8) as *mut c_void,
+                )?;
 
                 user.u_debugreg[i] = i64::cast_unsigned(data);
             }
@@ -178,31 +116,15 @@ impl Process {
     pub fn write_registers(&mut self, regs: &Registers) -> Result<(), std::io::Error> {
         #[cfg(target_arch = "x86_64")]
         {
-            if unsafe {
-                libc::ptrace(
-                    libc::PTRACE_SETREGS,
-                    self.pid,
-                    std::ptr::null() as *const c_void,
-                    &regs.user.regs as *const _ as *const c_void,
-                )
-            } < 0
-            {
-                eprint!("Failed to set regs: {}", std::io::Error::last_os_error());
-                return Err(std::io::Error::last_os_error());
-            }
+            nix::sys::ptrace::setregset::<nix::sys::ptrace::regset::NT_PRSTATUS>(
+                self.pid(),
+                regs.user.regs,
+            )?;
 
-            if unsafe {
-                libc::ptrace(
-                    libc::PTRACE_SETFPREGS,
-                    self.pid,
-                    std::ptr::null() as *const c_void,
-                    &regs.user.i387 as *const _ as *const c_void,
-                )
-            } < 0
-            {
-                eprint!("Failed to set fpregs: {}", std::io::Error::last_os_error());
-                return Err(std::io::Error::last_os_error());
-            }
+            nix::sys::ptrace::setregset::<nix::sys::ptrace::regset::NT_PRFPREG>(
+                self.pid(),
+                regs.user.i387,
+            )?;
 
             /*
             for i in 0..8 {
@@ -334,10 +256,8 @@ mod tests {
         let mut command = Command::new(&temp_path);
         unsafe {
             command.pre_exec(move || {
-                unsafe {
-                    libc::close(libc::STDOUT_FILENO);
-                    libc::dup2(tx.as_raw_fd(), libc::STDOUT_FILENO);
-                }
+                libc::close(libc::STDOUT_FILENO);
+                libc::dup2(tx.as_raw_fd(), libc::STDOUT_FILENO);
                 Ok(())
             })
         };
