@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let cmd = {
-            let mut cmd: Vec<_> = line.trim().split_whitespace().collect();
+            let mut cmd: Vec<_> = line.split_whitespace().collect();
             cmd.insert(0, "input");
             cmd
         };
