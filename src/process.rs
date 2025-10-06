@@ -120,6 +120,7 @@ impl Process {
             return Ok(Registers { user });
         }
 
+        #[cfg(not(target_arch = "x86_64"))]
         todo!()
     }
 
@@ -160,6 +161,7 @@ impl Process {
             return Ok(());
         }
 
+        #[cfg(not(target_arch = "x86_64"))]
         todo!()
     }
 

@@ -41,10 +41,6 @@ impl RegisterValue {
             RegisterValue::U128(v) => *v as usize,
         }
     }
-
-    pub fn from_usize(v: usize) -> Self {
-        RegisterValue::U64(v as u64)
-    }
 }
 #[cfg(target_arch = "x86_64")]
 pub const PC: RegisterInfo = RegisterInfo {
