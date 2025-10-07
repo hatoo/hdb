@@ -15,6 +15,7 @@ mod test {
                 .arg("-g")
                 .arg("-o")
                 .arg(&output)
+                .stderr(std::process::Stdio::null())
                 .status()
                 .unwrap(),
             std::process::ExitStatus::default()

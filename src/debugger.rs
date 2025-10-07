@@ -320,4 +320,21 @@ mod tests {
 
         assert!(matches!(status, WaitStatus::Exited(_, 0)),);
     }
+
+    #[test]
+    fn test_breakpoint_list() {
+        let hello_world = crate::test::compile("tests/hello_world.c");
+        let mut command = Command::new(hello_world.as_os_str());
+        command.stdout(std::process::Stdio::null());
+        let process = Process::spawn(command).unwrap();
+        let mut debugger = Debugger::new(process);
+        let load_addr = get_load_addr(hello_world.as_ref(), unsafe { debugger.raw_pid() });
+        let bp_id = debugger.add_breakpoint(load_addr).unwrap();
+
+        assert_eq!(debugger.breakpoints().count(), 1);
+        assert_eq!(debugger.breakpoints().next().unwrap().1.addr, load_addr);
+
+        debugger.remove_breakpoint(bp_id).unwrap();
+        assert_eq!(debugger.breakpoints().count(), 0);
+    }
 }
