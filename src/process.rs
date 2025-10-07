@@ -153,10 +153,18 @@ impl Process {
         let status = self.wait_on_signal()?;
         Ok(status)
     }
+}
 
-    #[cfg(test)]
-    fn stat(&self) -> char {
-        let path = format!("/proc/{}/stat", self.pid);
+#[cfg(test)]
+mod tests {
+    use std::os::fd::AsRawFd;
+
+    use crate::register::RegisterValue;
+
+    use super::*;
+
+    fn stat(process: &Process) -> char {
+        let path = format!("/proc/{}/stat", process.pid());
 
         std::fs::read_to_string(path)
             .unwrap()
@@ -167,15 +175,6 @@ impl Process {
             .next()
             .unwrap()
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::os::fd::AsRawFd;
-
-    use crate::register::RegisterValue;
-
-    use super::*;
 
     fn read_reg_by_name(regs: &Registers, name: &str) -> RegisterValue {
         let reg = crate::register::REGISTERS
@@ -201,7 +200,7 @@ mod tests {
         let mut process = Process::spawn(command).unwrap();
         process.resume().unwrap();
 
-        assert!(matches!(process.stat(), 'S' | 'R'));
+        assert!(matches!(stat(&process), 'S' | 'R'));
     }
 
     #[test]
