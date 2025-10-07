@@ -152,3 +152,13 @@ impl Debugger {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nix::sys::wait::WaitStatus;
+    use std::process::Command;
+
+    #[test]
+    fn test_breakpoint_stops() {}
+}

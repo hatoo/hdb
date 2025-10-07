@@ -159,7 +159,7 @@ impl Process {
 mod tests {
     use std::os::fd::AsRawFd;
 
-    use crate::register::RegisterValue;
+    use crate::{register::RegisterValue, test::compile};
 
     use super::*;
 
@@ -216,16 +216,8 @@ mod tests {
 
     #[test]
     fn test_reg_read() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let temp_path = temp_dir.path().join("reg_read");
-
-        let mut command = Command::new("gcc");
-        command.arg("-o").arg(&temp_path).arg("tests/reg_read.s");
-        command.stderr(std::process::Stdio::null());
-
-        command.spawn().unwrap().wait().unwrap();
-
-        let mut process = Process::spawn(Command::new(&temp_path)).unwrap();
+        let reg_read = compile("tests/reg_read.s");
+        let mut process = Process::spawn(Command::new(&reg_read)).unwrap();
 
         process.resume().unwrap();
         process.wait_on_signal().unwrap();
@@ -261,15 +253,10 @@ mod tests {
 
     #[test]
     fn test_reg_write() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let temp_path = temp_dir.path().join("reg_write");
-        let mut command = Command::new("gcc");
-        command.arg("-o").arg(&temp_path).arg("tests/reg_write.s");
-        command.stderr(std::process::Stdio::null());
-        command.spawn().unwrap().wait().unwrap();
+        let reg_write = compile("tests/reg_write.s");
 
         let (rx, tx) = std::io::pipe().unwrap();
-        let mut command = Command::new(&temp_path);
+        let mut command = Command::new(&reg_write);
         unsafe {
             command.pre_exec(move || {
                 libc::close(libc::STDOUT_FILENO);
