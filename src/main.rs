@@ -41,7 +41,9 @@ enum Commands {
 
 #[derive(Subcommand, Debug)]
 enum BreakPointCommands {
-    Set { addr: String },
+    Add { addr: String },
+    Remove { id: usize },
+    List,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -102,9 +104,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     debugger.write_register(reg_info, reg_value)?;
                 }
                 Commands::BreakPoint { command } => match command {
-                    BreakPointCommands::Set { addr } => {
+                    BreakPointCommands::Add { addr } => {
                         let addr = parse_int::parse::<usize>(&addr)?;
-                        debugger.set_breakpoint(addr)?;
+                        debugger.add_breakpoint(addr)?;
+                    }
+                    BreakPointCommands::Remove { id } => {
+                        debugger.remove_breakpoint(debugger::BreakPointId(id))?;
+                    }
+                    BreakPointCommands::List => {
+                        for (id, bp) in debugger.breakpoints() {
+                            println!("{}: {:#x}", id, bp.addr);
+                        }
                     }
                 },
             },

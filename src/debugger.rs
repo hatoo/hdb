@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::{process::Process, register::RegisterInfo};
 
 pub struct Debugger {
@@ -5,58 +7,102 @@ pub struct Debugger {
     breakpoints: BreakPoints,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BreakPoint {
-    addr: usize,
-    orig_byte: u8,
+    pub addr: usize,
+    orig_byte: Option<u8>,
 }
 
 #[cfg(target_arch = "x86_64")]
 impl BreakPoint {
-    pub fn new(process: &mut Process, addr: usize) -> Result<Self, std::io::Error> {
-        let orig_data = process.read(addr)?;
-        let orig_byte = (orig_data & 0xff) as u8;
-        let int3_data = (orig_data & !0xff) | 0xcc;
-        process.write(addr, int3_data)?;
+    pub fn new(addr: usize) -> Result<Self, std::io::Error> {
+        Ok(Self {
+            addr,
+            orig_byte: None,
+        })
+    }
 
-        Ok(Self { addr, orig_byte })
+    pub fn enabled(&self) -> bool {
+        self.orig_byte.is_some()
     }
 
     pub fn enable(&mut self, process: &mut Process) -> Result<(), std::io::Error> {
+        assert!(self.orig_byte.is_none());
+
         let orig_data = process.read(self.addr)?;
         let int3_data = (orig_data & !0xff) | 0xcc;
-        self.orig_byte = (orig_data & 0xff) as u8;
+        self.orig_byte = Some((orig_data & 0xff) as u8);
         process.write(self.addr, int3_data)?;
         Ok(())
     }
 
-    pub fn disable(&self, process: &mut Process) -> Result<(), std::io::Error> {
+    pub fn disable(&mut self, process: &mut Process) -> Result<(), std::io::Error> {
         let orig_data = process.read(self.addr)?;
-        let restored_data = (orig_data & !0xff) | (self.orig_byte as i64);
+        let restored_data = (orig_data & !0xff) | (self.orig_byte.take().unwrap() as i64);
         process.write(self.addr, restored_data)?;
         Ok(())
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct BreakPointId(pub usize);
+
+impl std::fmt::Display for BreakPointId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 pub struct BreakPoints {
-    points: Vec<BreakPoint>,
+    next_id: usize,
+    points: BTreeMap<BreakPointId, BreakPoint>,
 }
 
 impl BreakPoints {
     pub fn new() -> Self {
-        Self { points: Vec::new() }
+        Self {
+            next_id: 0,
+            points: BTreeMap::new(),
+        }
     }
 
-    pub fn add(&mut self, process: &mut Process, addr: usize) -> Result<(), std::io::Error> {
-        if self.points.iter().any(|bp| bp.addr == addr) {
-            return Ok(());
+    pub fn add(
+        &mut self,
+        process: &mut Process,
+        addr: usize,
+    ) -> Result<BreakPointId, std::io::Error> {
+        if let Some((id, _)) = self.points.iter().find(|(_, bp)| bp.addr == addr) {
+            return Ok(*id);
         }
 
-        self.points.push(BreakPoint::new(process, addr)?);
+        let mut bp = BreakPoint::new(addr)?;
+        bp.enable(process)?;
+
+        let id = BreakPointId(self.next_id);
+        self.points.insert(id, bp);
+        self.next_id += 1;
+        Ok(id)
+    }
+
+    pub fn remove(
+        &mut self,
+        process: &mut Process,
+        id: BreakPointId,
+    ) -> Result<(), std::io::Error> {
+        if let Some(mut bp) = self.points.remove(&id) {
+            if bp.enabled() {
+                bp.disable(process)?;
+            }
+        }
         Ok(())
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = (&BreakPointId, &BreakPoint)> {
+        self.points.iter()
+    }
+
     pub fn break_point_at(&mut self, addr: usize) -> Option<&mut BreakPoint> {
-        self.points.iter_mut().find(|bp| bp.addr == addr)
+        self.points.values_mut().find(|bp| bp.addr == addr)
     }
 }
 
@@ -147,8 +193,17 @@ impl Debugger {
         Ok(())
     }
 
-    pub fn set_breakpoint(&mut self, addr: usize) -> Result<(), std::io::Error> {
-        self.breakpoints.add(&mut self.process, addr)?;
+    pub fn breakpoints(&self) -> impl Iterator<Item = (&BreakPointId, &BreakPoint)> {
+        self.breakpoints.iter()
+    }
+
+    pub fn add_breakpoint(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
+        let id = self.breakpoints.add(&mut self.process, addr)?;
+        Ok(id)
+    }
+
+    pub fn remove_breakpoint(&mut self, id: BreakPointId) -> Result<(), std::io::Error> {
+        self.breakpoints.remove(&mut self.process, id)?;
         Ok(())
     }
 }
@@ -223,7 +278,7 @@ mod tests {
         let mut debugger = Debugger::new(process);
 
         let load_addr = get_load_addr(hello_world.as_ref(), unsafe { debugger.raw_pid() });
-        debugger.set_breakpoint(load_addr).unwrap();
+        debugger.add_breakpoint(load_addr).unwrap();
 
         let status = debugger.cont().unwrap();
         assert!(matches!(
@@ -238,5 +293,31 @@ mod tests {
         assert_eq!(output, "Hello, World!\n");
 
         assert!(matches!(status, WaitStatus::Exited(_, 0)),)
+    }
+
+    #[test]
+    fn test_breakpoint_remove() {
+        let hello_world = crate::test::compile("tests/hello_world.c");
+        let (mut rx, tx) = std::io::pipe().unwrap();
+        let mut command = Command::new(hello_world.as_os_str());
+        unsafe {
+            command.pre_exec(move || {
+                libc::close(libc::STDOUT_FILENO);
+                libc::dup2(tx.as_raw_fd(), libc::STDOUT_FILENO);
+                Ok(())
+            });
+        }
+        let process = Process::spawn(command).unwrap();
+        let mut debugger = Debugger::new(process);
+        let load_addr = get_load_addr(hello_world.as_ref(), unsafe { debugger.raw_pid() });
+        let bp_id = debugger.add_breakpoint(load_addr).unwrap();
+        debugger.remove_breakpoint(bp_id).unwrap();
+
+        let status = debugger.cont().unwrap();
+        let mut output = String::new();
+        std::io::Read::read_to_string(&mut rx, &mut output).unwrap();
+        assert_eq!(output, "Hello, World!\n");
+
+        assert!(matches!(status, WaitStatus::Exited(_, 0)),);
     }
 }
