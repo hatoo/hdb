@@ -37,6 +37,7 @@ enum Commands {
         #[command(subcommand)]
         command: BreakPointCommands,
     },
+    Quit,
 }
 
 #[derive(Subcommand, Debug)]
@@ -117,6 +118,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 },
+                Commands::Quit => {
+                    break;
+                }
             },
             Err(e) => {
                 e.print()?;
