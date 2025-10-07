@@ -1,10 +1,9 @@
 use clap::{Parser, Subcommand};
 
-use crate::register::REGISTERS;
-
-mod debugger;
-mod process;
-mod register;
+use hdb::{
+    debugger, process,
+    register::{REGISTERS, RegisterValue},
+};
 
 #[derive(Parser, Debug)]
 struct Opt {
@@ -94,9 +93,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Commands::Write { name, value } => {
                     let reg_info = REGISTERS.iter().find(|r| r.name == name).unwrap();
                     let reg_value = match reg_info.size {
-                        1 => register::RegisterValue::U8(parse_int::parse(&value)?),
-                        8 => register::RegisterValue::U64(parse_int::parse(&value)?),
-                        16 => register::RegisterValue::U128(parse_int::parse(&value)?),
+                        1 => RegisterValue::U8(parse_int::parse(&value)?),
+                        8 => RegisterValue::U64(parse_int::parse(&value)?),
+                        16 => RegisterValue::U128(parse_int::parse(&value)?),
                         _ => unreachable!(),
                     };
 
