@@ -156,9 +156,87 @@ impl Debugger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::panic;
     use nix::sys::wait::WaitStatus;
-    use std::process::Command;
+    use std::{
+        os::{fd::AsRawFd, unix::process::CommandExt},
+        process::Command,
+    };
+
+    fn get_file_load_addr(path: &std::path::Path) -> isize {
+        let readelf = String::from_utf8_lossy(
+            &std::process::Command::new("readelf")
+                .arg("-WS")
+                .arg(path)
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .into_owned();
+
+        for line in readelf.lines() {
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            if cols.len() >= 7 && cols[1] == ".text" {
+                let addr = isize::from_str_radix(cols[3], 16).unwrap();
+                let offset = isize::from_str_radix(cols[4], 16).unwrap();
+
+                return addr + addr - offset;
+            }
+        }
+
+        panic!("no .text section");
+    }
+
+    fn get_load_addr(path: &std::path::Path, pid: i32) -> usize {
+        let file_load_addr = get_file_load_addr(path);
+
+        let maps = std::fs::read_to_string(format!("/proc/{}/maps", pid)).unwrap();
+        for line in maps.lines() {
+            if line.contains("r-xp") {
+                let addr_str = line.split('-').next().unwrap();
+                let addr_start = isize::from_str_radix(addr_str, 16).unwrap();
+                let offset =
+                    isize::from_str_radix(line.split_whitespace().nth(2).unwrap(), 16).unwrap();
+
+                return usize::try_from(addr_start - offset + file_load_addr).unwrap();
+            }
+        }
+
+        panic!("no hello_world mapping");
+    }
 
     #[test]
-    fn test_breakpoint_stops() {}
+    fn test_breakpoint_stops() {
+        let hello_world = crate::test::compile("tests/hello_world.c");
+
+        let (mut rx, tx) = std::io::pipe().unwrap();
+        let mut command = Command::new(hello_world.as_os_str());
+        unsafe {
+            command.pre_exec(move || {
+                libc::close(libc::STDOUT_FILENO);
+                libc::dup2(tx.as_raw_fd(), libc::STDOUT_FILENO);
+                Ok(())
+            });
+        }
+
+        let process = Process::spawn(command).unwrap();
+        let mut debugger = Debugger::new(process);
+
+        let load_addr = get_load_addr(hello_world.as_ref(), unsafe { debugger.raw_pid() });
+        debugger.set_breakpoint(load_addr).unwrap();
+
+        let status = debugger.cont().unwrap();
+        assert!(matches!(
+            status,
+            WaitStatus::Stopped(_, nix::sys::signal::Signal::SIGTRAP)
+        ),);
+
+        let status = debugger.cont().unwrap();
+
+        let mut output = String::new();
+        std::io::Read::read_to_string(&mut rx, &mut output).unwrap();
+        assert_eq!(output, "Hello, World!\n");
+
+        assert!(matches!(status, WaitStatus::Exited(_, 0)),)
+    }
 }
