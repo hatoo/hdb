@@ -129,42 +129,35 @@ impl Debugger {
         unsafe { self.process.raw_pid() }
     }
 
-    pub fn step(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
+    fn skip_breakpoint(&mut self) -> Result<Option<nix::sys::wait::WaitStatus>, std::io::Error> {
         let pc = self.get_pc()?;
-        let mut break_point = self.breakpoints.break_point_at(pc);
-
-        if let Some(breakpoint) = break_point.as_mut() {
+        if self.breakpoints.break_point_at(pc - 1).is_some() {
+            self.set_pc(pc - 1)?;
+            let Some(breakpoint) = self.breakpoints.break_point_at(pc - 1) else {
+                unreachable!()
+            };
             breakpoint.disable(&mut self.process)?;
-        }
-
-        let status = self.process.single_step()?;
-
-        if let Some(breakpoint) = break_point.as_mut() {
+            let status = self.process.single_step()?;
             breakpoint.enable(&mut self.process)?;
+            Ok(Some(status))
+        } else {
+            Ok(None)
         }
+    }
 
-        Ok(status)
+    pub fn step(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
+        if let Some(status) = self.skip_breakpoint()? {
+            return Ok(status);
+        } else {
+            let status = self.process.single_step()?;
+            Ok(status)
+        }
     }
 
     pub fn cont(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
-        {
-            let pc = self.get_pc()?;
-            if let Some(breakpoint) = self.breakpoints.break_point_at(pc) {
-                self.process.single_step()?;
-                breakpoint.enable(&mut self.process)?;
-            }
-        }
-
+        self.skip_breakpoint()?;
         self.process.resume()?;
         let status = self.process.wait_on_signal()?;
-
-        if let nix::sys::wait::WaitStatus::Stopped(_, nix::sys::signal::Signal::SIGTRAP) = status {
-            let pc = self.get_pc()? - 1;
-            if let Some(breakpoint) = self.breakpoints.break_point_at(pc) {
-                breakpoint.disable(&mut self.process)?;
-                self.set_pc(pc)?;
-            }
-        }
 
         Ok(status)
     }
@@ -294,6 +287,7 @@ mod tests {
             status,
             WaitStatus::Stopped(_, nix::sys::signal::Signal::SIGTRAP)
         ),);
+        assert_eq!(debugger.get_pc().unwrap(), load_addr + 1);
 
         let status = debugger.cont().unwrap();
 

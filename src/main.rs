@@ -91,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Commands::Read { name } => {
                     let info = REGISTERS.iter().find(|r| r.name == name).unwrap();
                     let value = debugger.read_register(info)?;
-                    println!("{:?}", value);
+                    println!("{:x}", value.as_usize());
                 }
                 Commands::Write { name, value } => {
                     let reg_info = REGISTERS.iter().find(|r| r.name == name).unwrap();
