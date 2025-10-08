@@ -193,6 +193,32 @@ impl Process {
 
         Ok(buf)
     }
+
+    pub fn write_at(&mut self, addr: usize, buf: &[u8]) -> Result<usize, std::io::Error> {
+        // use ptrace_pokedata to write protected memory
+        let mut written = 0;
+        while written < buf.len() {
+            let remaining = buf.len() - written;
+
+            if remaining >= 8 {
+                let mut data = [0u8; 8];
+                data.copy_from_slice(&buf[written..written + 8]);
+                let data = i64::from_ne_bytes(data);
+                nix::sys::ptrace::write(self.pid(), (addr + written) as *mut c_void, data as _)?;
+                written += 8;
+            } else {
+                // Read the existing data
+                let existing_data =
+                    nix::sys::ptrace::read(self.pid(), (addr + written) as *mut c_void)?;
+                let mut data = existing_data.to_ne_bytes();
+                data[..remaining].copy_from_slice(&buf[written..]);
+                let data = i64::from_ne_bytes(data);
+                nix::sys::ptrace::write(self.pid(), (addr + written) as *mut c_void, data as _)?;
+                written += remaining;
+            }
+        }
+        Ok(written)
+    }
 }
 
 #[cfg(test)]
