@@ -172,9 +172,9 @@ impl Process {
         let mut remote_iovs: Vec<RemoteIoVec> = Vec::new();
 
         // Split into 4KiB page boundaries
-        let mut left = len;
         let mut current_addr = addr;
-        while left > 0 {
+        while (addr + len) > current_addr {
+            let left = (addr + len) - current_addr;
             let page_offset = current_addr % 4096;
             let to_read = std::cmp::min(left, 4096 - page_offset);
 
@@ -184,7 +184,6 @@ impl Process {
             };
             remote_iovs.push(remote_iov);
 
-            left -= to_read;
             current_addr += to_read;
         }
         let nread = nix::sys::uio::process_vm_readv(self.pid(), &mut [local_iov], &remote_iovs)?;
