@@ -1,5 +1,7 @@
 use std::{ffi::c_void, os::unix::process::CommandExt, process::Command};
 
+use nix::sys::uio::RemoteIoVec;
+
 use crate::register::Registers;
 
 pub struct Process {
@@ -158,6 +160,39 @@ impl Process {
         nix::sys::ptrace::step(self.pid(), None)?;
         let status = self.wait_on_signal()?;
         Ok(status)
+    }
+
+    pub fn read_at(&mut self, addr: usize, len: usize) -> Result<Vec<u8>, std::io::Error> {
+        let mut buf = Vec::with_capacity(len);
+
+        let local_iov = std::io::IoSliceMut::new(unsafe {
+            std::slice::from_raw_parts_mut(buf.as_mut_ptr(), len)
+        });
+
+        let mut remote_iovs: Vec<RemoteIoVec> = Vec::new();
+
+        // Split into 4KiB page boundaries
+        let mut left = len;
+        let mut current_addr = addr;
+        while left > 0 {
+            let page_offset = current_addr % 4096;
+            let to_read = std::cmp::min(left, 4096 - page_offset);
+
+            let remote_iov = RemoteIoVec {
+                base: current_addr,
+                len: to_read,
+            };
+            remote_iovs.push(remote_iov);
+
+            left -= to_read;
+            current_addr += to_read;
+        }
+        let nread = nix::sys::uio::process_vm_readv(self.pid(), &mut [local_iov], &remote_iovs)?;
+        unsafe {
+            buf.set_len(nread);
+        }
+
+        Ok(buf)
     }
 }
 
