@@ -42,8 +42,13 @@ enum Commands {
 
 #[derive(Subcommand, Debug)]
 enum BreakPointCommands {
-    Add { addr: String },
-    Remove { id: usize },
+    #[clap(alias = "set")]
+    Add {
+        addr: String,
+    },
+    Remove {
+        id: usize,
+    },
     List,
 }
 
