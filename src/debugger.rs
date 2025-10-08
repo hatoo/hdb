@@ -154,10 +154,9 @@ impl Debugger {
         }
     }
 
-    pub fn cont(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
+    pub fn resume(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
         self.skip_breakpoint()?;
-        self.process.resume()?;
-        let status = self.process.wait_on_signal()?;
+        let status = self.process.resume()?;
 
         Ok(status)
     }
@@ -282,14 +281,14 @@ mod tests {
         let load_addr = get_load_addr(hello_world.as_ref(), unsafe { debugger.raw_pid() });
         debugger.add_breakpoint(load_addr).unwrap();
 
-        let status = debugger.cont().unwrap();
+        let status = debugger.resume().unwrap();
         assert!(matches!(
             status,
             WaitStatus::Stopped(_, nix::sys::signal::Signal::SIGTRAP)
         ),);
         assert_eq!(debugger.get_pc().unwrap(), load_addr + 1);
 
-        let status = debugger.cont().unwrap();
+        let status = debugger.resume().unwrap();
 
         let mut output = String::new();
         std::io::Read::read_to_string(&mut rx, &mut output).unwrap();
@@ -316,7 +315,7 @@ mod tests {
         let bp_id = debugger.add_breakpoint(load_addr).unwrap();
         debugger.remove_breakpoint(bp_id).unwrap();
 
-        let status = debugger.cont().unwrap();
+        let status = debugger.resume().unwrap();
         let mut output = String::new();
         std::io::Read::read_to_string(&mut rx, &mut output).unwrap();
         assert_eq!(output, "Hello, World!\n");

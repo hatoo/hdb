@@ -61,12 +61,18 @@ impl Process {
         Ok(proc)
     }
 
-    pub fn wait_on_signal(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
+    fn wait_on_signal(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
         let status = nix::sys::wait::waitpid(self.pid(), None)?;
         Ok(status)
     }
 
-    pub fn resume(&mut self) -> Result<(), std::io::Error> {
+    pub fn resume(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
+        nix::sys::ptrace::cont(self.pid(), None)?;
+        let status = self.wait_on_signal()?;
+        Ok(status)
+    }
+
+    pub fn cont(&mut self) -> Result<(), std::io::Error> {
         nix::sys::ptrace::cont(self.pid(), None)?;
         Ok(())
     }
@@ -198,7 +204,7 @@ mod tests {
         command.arg("10");
 
         let mut process = Process::spawn(command).unwrap();
-        process.resume().unwrap();
+        process.cont().unwrap();
 
         assert!(matches!(stat(&process), 'S' | 'R'));
     }
@@ -208,10 +214,10 @@ mod tests {
         let command = Command::new("true");
 
         let mut process = Process::spawn(command).unwrap();
-        process.resume().unwrap();
+        process.cont().unwrap();
         process.wait_on_signal().unwrap();
 
-        assert!(process.resume().is_err());
+        assert!(process.cont().is_err());
     }
 
     #[test]
@@ -219,28 +225,28 @@ mod tests {
         let reg_read = compile("tests/reg_read.s");
         let mut process = Process::spawn(Command::new(&reg_read)).unwrap();
 
-        process.resume().unwrap();
+        process.cont().unwrap();
         process.wait_on_signal().unwrap();
         assert_eq!(
             read_reg_by_name(&process.read_registers().unwrap(), "r13"),
             RegisterValue::U64(0xcafecafe)
         );
 
-        process.resume().unwrap();
+        process.cont().unwrap();
         process.wait_on_signal().unwrap();
         assert_eq!(
             read_reg_by_name(&process.read_registers().unwrap(), "r13b"),
             RegisterValue::U8(42)
         );
 
-        process.resume().unwrap();
+        process.cont().unwrap();
         process.wait_on_signal().unwrap();
         assert_eq!(
             read_reg_by_name(&process.read_registers().unwrap(), "xmm0"),
             RegisterValue::U64(0xba5eba11)
         );
 
-        process.resume().unwrap();
+        process.cont().unwrap();
         process.wait_on_signal().unwrap();
         // TODO: find good f128 library
         /*
@@ -266,14 +272,14 @@ mod tests {
         };
         let mut process = Process::spawn(command).unwrap();
 
-        process.resume().unwrap();
+        process.cont().unwrap();
         process.wait_on_signal().unwrap();
 
         let mut regs = process.read_registers().unwrap();
         write_reg_by_name(&mut regs, "rsi", RegisterValue::U64(0xcafecafe));
         process.write_registers(&regs).unwrap();
 
-        process.resume().unwrap();
+        process.cont().unwrap();
         process.wait_on_signal().unwrap();
         let mut buf = [0u8; 80];
         let len = unsafe { libc::read(rx.as_raw_fd(), buf.as_mut_ptr() as *mut c_void, 80) };

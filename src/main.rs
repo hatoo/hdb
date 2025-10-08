@@ -91,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 Commands::Continue => {
-                    println!("{:?}", debugger.cont()?);
+                    println!("{:?}", debugger.resume()?);
                 }
                 Commands::Read { name } => {
                     let info = REGISTERS.iter().find(|r| r.name == name).unwrap();
