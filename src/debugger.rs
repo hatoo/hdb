@@ -29,17 +29,26 @@ impl BreakPoint {
     pub fn enable(&mut self, process: &mut Process) -> Result<(), std::io::Error> {
         assert!(self.orig_byte.is_none());
 
-        let orig_data = process.read(self.addr)?;
-        let int3_data = (orig_data & !0xff) | 0xcc;
-        self.orig_byte = Some((orig_data & 0xff) as u8);
-        process.write(self.addr, int3_data)?;
+        let aligned_addr = self.addr & !0x7;
+        let offset = self.addr - aligned_addr;
+        assert!(offset < 8);
+
+        let orig_data = process.read(aligned_addr)?.cast_unsigned();
+        let int3_data = (orig_data & !(0xff << (offset * 8))) | (0xcc << (offset * 8));
+        self.orig_byte = Some(((orig_data & (0xff << (offset * 8))) >> (offset * 8)) as u8);
+        process.write(aligned_addr, int3_data.cast_signed())?;
         Ok(())
     }
 
     pub fn disable(&mut self, process: &mut Process) -> Result<(), std::io::Error> {
-        let orig_data = process.read(self.addr)?;
-        let restored_data = (orig_data & !0xff) | (self.orig_byte.take().unwrap() as i64);
-        process.write(self.addr, restored_data)?;
+        let aligned_addr = self.addr & !0x7;
+        let offset = self.addr - aligned_addr;
+        assert!(offset < 8);
+
+        let orig_data = process.read(aligned_addr)?.cast_unsigned();
+        let restored_data = (orig_data & !(0xff << (offset * 8)))
+            | ((self.orig_byte.take().unwrap() as u64) << (offset * 8));
+        process.write(aligned_addr, restored_data.cast_signed())?;
         Ok(())
     }
 }
