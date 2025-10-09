@@ -198,6 +198,10 @@ impl Debugger {
         self.process.read_at(addr, size)
     }
 
+    pub fn write_memory(&mut self, addr: usize, data: &[u8]) -> Result<usize, std::io::Error> {
+        self.process.write_at(addr, data)
+    }
+
     pub fn breakpoints(&self) -> impl Iterator<Item = (&BreakPointId, &BreakPoint)> {
         self.breakpoints.iter()
     }

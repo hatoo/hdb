@@ -48,7 +48,8 @@ enum Commands {
 enum BreakPointCommands {
     #[clap(alias = "set")]
     Add {
-        addr: String,
+        #[clap(value_parser = parse_int::parse::<usize>)]
+        addr: usize,
     },
     Remove {
         id: usize,
@@ -59,9 +60,17 @@ enum BreakPointCommands {
 #[derive(Subcommand, Debug)]
 enum MemoryCommands {
     Read {
-        addr: String,
+        #[clap(value_parser = parse_int::parse::<usize>)]
+        addr: usize,
         #[clap(default_value_t = 32)]
         size: usize,
+    },
+
+    Write {
+        #[clap(value_parser = parse_int::parse::<usize>)]
+        addr: usize,
+        #[clap(value_parser = parse_int::parse::<u8>)]
+        data: Vec<u8>,
     },
 }
 
@@ -94,72 +103,85 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
-        match UserInput::try_parse_from(std::iter::once("input").chain(line.split_whitespace())) {
-            Ok(input) => match input.command {
-                Commands::Step { count } => {
-                    for _ in 0..count {
-                        // println!("{:?}", debugger.step()?);
-                        // println!("PC = {:#x}", debugger.get_pc()?);
-                        debugger.step()?;
-                    }
-                }
-                Commands::Continue => {
-                    println!("{:?}", debugger.resume()?);
-                }
-                Commands::Read { name } => {
-                    let info = REGISTERS.iter().find(|r| r.name == name).unwrap();
-                    let value = debugger.read_register(info)?;
-                    println!("{:x}", value.as_usize());
-                }
-                Commands::Write { name, value } => {
-                    let reg_info = REGISTERS.iter().find(|r| r.name == name).unwrap();
-                    let reg_value = match reg_info.size {
-                        1 => RegisterValue::U8(parse_int::parse(&value)?),
-                        8 => RegisterValue::U64(parse_int::parse(&value)?),
-                        16 => RegisterValue::U128(parse_int::parse(&value)?),
-                        _ => unreachable!(),
-                    };
-
-                    debugger.write_register(reg_info, reg_value)?;
-                }
-                Commands::BreakPoint { command } => match command {
-                    BreakPointCommands::Add { addr } => {
-                        let addr = parse_int::parse::<usize>(&addr)?;
-                        debugger.add_breakpoint(addr)?;
-                    }
-                    BreakPointCommands::Remove { id } => {
-                        debugger.remove_breakpoint(debugger::BreakPointId(id))?;
-                    }
-                    BreakPointCommands::List => {
-                        for (id, bp) in debugger.breakpoints() {
-                            println!("{}: {:#x}", id, bp.addr);
+        let result: Result<bool, Box<dyn std::error::Error>> = (|| {
+            match UserInput::try_parse_from(std::iter::once("input").chain(line.split_whitespace()))
+            {
+                Ok(input) => match input.command {
+                    Commands::Step { count } => {
+                        for _ in 0..count {
+                            // println!("{:?}", debugger.step()?);
+                            // println!("PC = {:#x}", debugger.get_pc()?);
+                            debugger.step()?;
                         }
                     }
-                },
+                    Commands::Continue => {
+                        println!("{:?}", debugger.resume()?);
+                    }
+                    Commands::Read { name } => {
+                        let info = REGISTERS.iter().find(|r| r.name == name).unwrap();
+                        let value = debugger.read_register(info)?;
+                        println!("{:x}", value.as_usize());
+                    }
+                    Commands::Write { name, value } => {
+                        let reg_info = REGISTERS.iter().find(|r| r.name == name).unwrap();
+                        let reg_value = match reg_info.size {
+                            1 => RegisterValue::U8(parse_int::parse(&value)?),
+                            8 => RegisterValue::U64(parse_int::parse(&value)?),
+                            16 => RegisterValue::U128(parse_int::parse(&value)?),
+                            _ => unreachable!(),
+                        };
 
-                Commands::Memory { command } => match command {
-                    MemoryCommands::Read { addr, size } => {
-                        let addr = parse_int::parse::<usize>(&addr)?;
-                        let data = debugger.read_memory(addr, size)?;
-                        for (i, byte) in data.iter().enumerate() {
-                            if i % 16 == 0 {
-                                if i != 0 {
-                                    println!();
-                                }
-                                print!("{:08x}: ", addr + i);
+                        debugger.write_register(reg_info, reg_value)?;
+                    }
+                    Commands::BreakPoint { command } => match command {
+                        BreakPointCommands::Add { addr } => {
+                            debugger.add_breakpoint(addr)?;
+                        }
+                        BreakPointCommands::Remove { id } => {
+                            debugger.remove_breakpoint(debugger::BreakPointId(id))?;
+                        }
+                        BreakPointCommands::List => {
+                            for (id, bp) in debugger.breakpoints() {
+                                println!("{}: {:#x}", id, bp.addr);
                             }
-                            print!("{:02x} ", byte);
                         }
-                        println!();
+                    },
+
+                    Commands::Memory { command } => match command {
+                        MemoryCommands::Read { addr, size } => {
+                            let data = debugger.read_memory(addr, size)?;
+                            for (i, byte) in data.iter().enumerate() {
+                                if i % 16 == 0 {
+                                    if i != 0 {
+                                        println!();
+                                    }
+                                    print!("{:08x}: ", addr + i);
+                                }
+                                print!("{:02x} ", byte);
+                            }
+                            println!();
+                        }
+                        MemoryCommands::Write { addr, data } => {
+                            debugger.write_memory(addr, &data)?;
+                        }
+                    },
+
+                    Commands::Quit => {
+                        return Ok(true);
                     }
                 },
-
-                Commands::Quit => {
-                    break;
+                Err(e) => {
+                    e.print()?;
                 }
-            },
+            };
+            Ok(false)
+        })();
+
+        match result {
+            Ok(true) => break,
+            Ok(false) => {}
             Err(e) => {
-                e.print()?;
+                eprintln!("Error: {}", e);
             }
         }
     }
