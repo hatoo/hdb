@@ -54,7 +54,8 @@ impl BreakPoint {
         Ok(())
     }
 
-    pub fn restore_disasm_code(&self, start_addr: usize, code: &mut [u8]) {
+    // For disassemble
+    pub fn restore_code(&self, start_addr: usize, code: &mut [u8]) {
         if self.addr < start_addr || self.addr >= start_addr + code.len() {
             return;
         }
@@ -254,7 +255,7 @@ impl Debugger {
         self.read_memory(pc, &mut code)?;
 
         for bp in self.breakpoints.points.values() {
-            bp.restore_disasm_code(pc, &mut code);
+            bp.restore_code(pc, &mut code);
         }
 
         let mut decoder =
