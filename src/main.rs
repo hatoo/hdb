@@ -37,6 +37,10 @@ enum Commands {
         #[command(subcommand)]
         command: BreakPointCommands,
     },
+    Memory {
+        #[command(subcommand)]
+        command: MemoryCommands,
+    },
     Quit,
 }
 
@@ -50,6 +54,15 @@ enum BreakPointCommands {
         id: usize,
     },
     List,
+}
+
+#[derive(Subcommand, Debug)]
+enum MemoryCommands {
+    Read {
+        addr: String,
+        #[clap(default_value_t = 32)]
+        size: usize,
+    },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -123,6 +136,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 },
+
+                Commands::Memory { command } => match command {
+                    MemoryCommands::Read { addr, size } => {
+                        let addr = parse_int::parse::<usize>(&addr)?;
+                        let data = debugger.read_memory(addr, size)?;
+                        for (i, byte) in data.iter().enumerate() {
+                            if i % 16 == 0 {
+                                if i != 0 {
+                                    println!();
+                                }
+                                print!("{:08x}: ", addr + i);
+                            }
+                            print!("{:02x} ", byte);
+                        }
+                        println!();
+                    }
+                },
+
                 Commands::Quit => {
                     break;
                 }

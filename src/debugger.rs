@@ -194,6 +194,10 @@ impl Debugger {
         Ok(())
     }
 
+    pub fn read_memory(&mut self, addr: usize, size: usize) -> Result<Vec<u8>, std::io::Error> {
+        self.process.read_at(addr, size)
+    }
+
     pub fn breakpoints(&self) -> impl Iterator<Item = (&BreakPointId, &BreakPoint)> {
         self.breakpoints.iter()
     }
