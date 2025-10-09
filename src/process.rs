@@ -162,19 +162,17 @@ impl Process {
         Ok(status)
     }
 
-    pub fn read_at(&mut self, addr: usize, len: usize) -> Result<Vec<u8>, std::io::Error> {
-        let mut buf = Vec::with_capacity(len);
-
+    pub fn read_at(&mut self, addr: usize, buf: &mut [u8]) -> Result<usize, std::io::Error> {
         let local_iov = std::io::IoSliceMut::new(unsafe {
-            std::slice::from_raw_parts_mut(buf.as_mut_ptr(), len)
+            std::slice::from_raw_parts_mut(buf.as_mut_ptr(), buf.len())
         });
 
         let mut remote_iovs: Vec<RemoteIoVec> = Vec::new();
 
         // Split into 4KiB page boundaries
         let mut current_addr = addr;
-        while (addr + len) > current_addr {
-            let left = (addr + len) - current_addr;
+        while (addr + buf.len()) > current_addr {
+            let left = (addr + buf.len()) - current_addr;
             let page_offset = current_addr % 4096;
             let to_read = std::cmp::min(left, 4096 - page_offset);
 
@@ -187,11 +185,7 @@ impl Process {
             current_addr += to_read;
         }
         let nread = nix::sys::uio::process_vm_readv(self.pid(), &mut [local_iov], &remote_iovs)?;
-        unsafe {
-            buf.set_len(nread);
-        }
-
-        Ok(buf)
+        Ok(nread)
     }
 
     pub fn write_at(&mut self, addr: usize, buf: &[u8]) -> Result<usize, std::io::Error> {

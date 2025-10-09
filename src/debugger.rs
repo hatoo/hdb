@@ -213,8 +213,8 @@ impl Debugger {
         Ok(())
     }
 
-    pub fn read_memory(&mut self, addr: usize, size: usize) -> Result<Vec<u8>, std::io::Error> {
-        self.process.read_at(addr, size)
+    pub fn read_memory(&mut self, addr: usize, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+        self.process.read_at(addr, buf)
     }
 
     pub fn write_memory(&mut self, addr: usize, data: &[u8]) -> Result<usize, std::io::Error> {
@@ -250,7 +250,8 @@ impl Debugger {
                 pc
             }
         };
-        let mut code = self.read_memory(pc, count * 15)?;
+        let mut code = vec![0u8; count * 15];
+        self.read_memory(pc, &mut code)?;
 
         for bp in self.breakpoints.points.values() {
             bp.restore_disasm_code(pc, &mut code);
@@ -433,7 +434,8 @@ mod tests {
         rx.read_exact(&mut addr).unwrap();
         let addr = usize::from_le_bytes(addr);
 
-        let value = debugger.read_memory(addr, 8).unwrap();
+        let mut value = [0u8; 8];
+        debugger.read_memory(addr, &mut value).unwrap();
         let value = u64::from_le_bytes(value.try_into().unwrap());
         assert_eq!(value, 0xcafecafe);
 
