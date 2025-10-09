@@ -67,7 +67,8 @@ enum RegisterCommands {
     Write {
         #[clap(value_parser=clap::builder::PossibleValuesParser::new(REGISTERS.iter().map(|r| r.name)))]
         name: String,
-        value: String,
+        #[clap(value_parser = parse_int::parse::<u128>)]
+        value: u128,
     },
 }
 
@@ -140,9 +141,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         RegisterCommands::Write { name, value } => {
                             let reg_info = REGISTERS.iter().find(|r| r.name == name).unwrap();
                             let reg_value = match reg_info.size {
-                                1 => RegisterValue::U8(parse_int::parse(&value)?),
-                                8 => RegisterValue::U64(parse_int::parse(&value)?),
-                                16 => RegisterValue::U128(parse_int::parse(&value)?),
+                                1 => RegisterValue::U8(value as u8),
+                                8 => RegisterValue::U64(value as u64),
+                                16 => RegisterValue::U128(value),
                                 _ => unreachable!(),
                             };
 
