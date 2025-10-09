@@ -24,14 +24,9 @@ enum Commands {
         count: usize,
     },
     Continue,
-    Read {
-        #[clap(value_parser=clap::builder::PossibleValuesParser::new(REGISTERS.iter().map(|r| r.name)))]
-        name: String,
-    },
-    Write {
-        #[clap(value_parser=clap::builder::PossibleValuesParser::new(REGISTERS.iter().map(|r| r.name)))]
-        name: String,
-        value: String,
+    Register {
+        #[command(subcommand)]
+        command: RegisterCommands,
     },
     BreakPoint {
         #[command(subcommand)]
@@ -55,6 +50,19 @@ enum BreakPointCommands {
         id: usize,
     },
     List,
+}
+
+#[derive(Subcommand, Debug)]
+enum RegisterCommands {
+    Read {
+        #[clap(value_parser=clap::builder::PossibleValuesParser::new(REGISTERS.iter().map(|r| r.name)))]
+        name: String,
+    },
+    Write {
+        #[clap(value_parser=clap::builder::PossibleValuesParser::new(REGISTERS.iter().map(|r| r.name)))]
+        name: String,
+        value: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -117,22 +125,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Commands::Continue => {
                         println!("{:?}", debugger.resume()?);
                     }
-                    Commands::Read { name } => {
-                        let info = REGISTERS.iter().find(|r| r.name == name).unwrap();
-                        let value = debugger.read_register(info)?;
-                        println!("{:x}", value.as_usize());
-                    }
-                    Commands::Write { name, value } => {
-                        let reg_info = REGISTERS.iter().find(|r| r.name == name).unwrap();
-                        let reg_value = match reg_info.size {
-                            1 => RegisterValue::U8(parse_int::parse(&value)?),
-                            8 => RegisterValue::U64(parse_int::parse(&value)?),
-                            16 => RegisterValue::U128(parse_int::parse(&value)?),
-                            _ => unreachable!(),
-                        };
+                    Commands::Register { command } => match command {
+                        RegisterCommands::Read { name } => {
+                            let info = REGISTERS.iter().find(|r| r.name == name).unwrap();
+                            let value = debugger.read_register(info)?;
+                            println!("{:x}", value.as_usize());
+                        }
+                        RegisterCommands::Write { name, value } => {
+                            let reg_info = REGISTERS.iter().find(|r| r.name == name).unwrap();
+                            let reg_value = match reg_info.size {
+                                1 => RegisterValue::U8(parse_int::parse(&value)?),
+                                8 => RegisterValue::U64(parse_int::parse(&value)?),
+                                16 => RegisterValue::U128(parse_int::parse(&value)?),
+                                _ => unreachable!(),
+                            };
 
-                        debugger.write_register(reg_info, reg_value)?;
-                    }
+                            debugger.write_register(reg_info, reg_value)?;
+                        }
+                    },
                     Commands::BreakPoint { command } => match command {
                         BreakPointCommands::Add { addr } => {
                             debugger.add_breakpoint(addr)?;
