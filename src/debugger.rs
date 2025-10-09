@@ -223,6 +223,7 @@ mod tests {
     use core::panic;
     use nix::sys::wait::WaitStatus;
     use std::{
+        io::Read,
         os::{fd::AsRawFd, unix::process::CommandExt},
         process::Command,
     };
@@ -346,5 +347,48 @@ mod tests {
 
         debugger.remove_breakpoint(bp_id).unwrap();
         assert_eq!(debugger.breakpoints().count(), 0);
+    }
+
+    #[test]
+    fn test_read_write_memory() {
+        let memory = crate::test::compile("tests/memory.cpp");
+
+        let mut command = Command::new(memory.as_os_str());
+        let (mut rx, tx) = std::io::pipe().unwrap();
+        unsafe {
+            command.pre_exec(move || {
+                libc::close(libc::STDOUT_FILENO);
+                libc::dup2(tx.as_raw_fd(), libc::STDOUT_FILENO);
+                Ok(())
+            })
+        };
+
+        let process = Process::spawn(command).unwrap();
+        let mut debugger = Debugger::new(process);
+
+        debugger.resume().unwrap();
+
+        let mut addr = [0u8; 8];
+        rx.read_exact(&mut addr).unwrap();
+        let addr = usize::from_le_bytes(addr);
+
+        let value = debugger.read_memory(addr, 8).unwrap();
+        let value = u64::from_le_bytes(value.try_into().unwrap());
+        assert_eq!(value, 0xcafecafe);
+
+        debugger.resume().unwrap();
+
+        let mut addr = [0u8; 8];
+        rx.read_exact(&mut addr).unwrap();
+        let addr = usize::from_le_bytes(addr);
+
+        let write_value = b"hello hdb";
+        debugger.write_memory(addr, write_value).unwrap();
+
+        debugger.resume().unwrap();
+
+        let mut output = String::new();
+        std::io::Read::read_to_string(&mut rx, &mut output).unwrap();
+        assert_eq!(output, "hello hdb");
     }
 }

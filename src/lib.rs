@@ -8,7 +8,7 @@ mod test {
         let output = tempfile::NamedTempFile::new().unwrap().into_temp_path();
 
         assert_eq!(
-            std::process::Command::new("gcc")
+            std::process::Command::new("g++")
                 .arg(path.as_ref())
                 .arg("-pie")
                 .arg("-O0")
