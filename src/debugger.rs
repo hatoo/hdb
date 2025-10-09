@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use iced_x86::Formatter;
+
 use crate::{process::Process, register::RegisterInfo};
 
 pub struct Debugger {
@@ -50,6 +52,18 @@ impl BreakPoint {
             | ((self.orig_byte.take().unwrap() as u64) << (offset * 8));
         process.write(aligned_addr, restored_data.cast_signed())?;
         Ok(())
+    }
+
+    pub fn restore_disasm_code(&self, start_addr: usize, code: &mut [u8]) {
+        if self.addr < start_addr || self.addr >= start_addr + code.len() {
+            return;
+        }
+
+        if let Some(orig_byte) = self.orig_byte {
+            let offset = self.addr - start_addr;
+            code[offset] = orig_byte;
+            return;
+        }
     }
 }
 
@@ -214,6 +228,48 @@ impl Debugger {
     pub fn remove_breakpoint(&mut self, id: BreakPointId) -> Result<(), std::io::Error> {
         self.breakpoints.remove(&mut self.process, id)?;
         Ok(())
+    }
+
+    pub fn disassemble(
+        &mut self,
+        addr: Option<usize>,
+        count: usize,
+    ) -> Result<Vec<(usize, String)>, std::io::Error> {
+        let pc = if let Some(addr) = addr {
+            addr
+        } else {
+            let pc = self.get_pc()?;
+            if self.breakpoints.break_point_at(pc - 1).is_some() {
+                pc - 1
+            } else {
+                pc
+            }
+        };
+        let mut code = self.read_memory(pc, count * 15)?;
+
+        for bp in self.breakpoints.points.values() {
+            bp.restore_disasm_code(pc, &mut code);
+        }
+
+        let mut decoder =
+            iced_x86::Decoder::with_ip(64, &code, pc as u64, iced_x86::DecoderOptions::NONE);
+        let mut formatter = iced_x86::NasmFormatter::new();
+        let mut output = String::new();
+        let mut instruction = iced_x86::Instruction::default();
+        let mut results = Vec::new();
+        let mut decoded_count = 0;
+        while decoder.can_decode() {
+            decoder.decode_out(&mut instruction);
+            output.clear();
+            formatter.format(&instruction, &mut output);
+            results.push((instruction.ip() as usize, output.clone()));
+            decoded_count += 1;
+            if decoded_count >= count {
+                break;
+            }
+        }
+
+        Ok(results)
     }
 }
 

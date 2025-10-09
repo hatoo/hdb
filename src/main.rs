@@ -36,6 +36,12 @@ enum Commands {
         #[command(subcommand)]
         command: MemoryCommands,
     },
+    Disassemble {
+        #[clap(value_parser = parse_int::parse::<usize>)]
+        addr: Option<usize>,
+        #[clap(default_value_t = 16, short = 'c', long = "count")]
+        count: usize,
+    },
     Quit,
 }
 
@@ -175,6 +181,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             debugger.write_memory(addr, &data)?;
                         }
                     },
+
+                    Commands::Disassemble { addr, count } => {
+                        for (addr, asm) in debugger.disassemble(addr, count)? {
+                            println!("{:016x}: {}", addr, asm);
+                        }
+                    }
 
                     Commands::Quit => {
                         return Ok(true);
