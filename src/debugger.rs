@@ -264,11 +264,18 @@ impl Debugger {
         let mut instruction = iced_x86::Instruction::default();
         let mut results = Vec::new();
         let mut decoded_count = 0;
+        let mut last_pos = 0;
         while decoder.can_decode() {
             decoder.decode_out(&mut instruction);
+            let pos = decoder.position();
             output.clear();
             formatter.format(&instruction, &mut output);
-            results.push((instruction.ip() as usize, output.clone()));
+            results.push((
+                instruction.ip() as usize,
+                format!("{}\t{:x?}", output, &code[last_pos..pos]),
+            ));
+
+            last_pos = pos;
             decoded_count += 1;
             if decoded_count >= count {
                 break;

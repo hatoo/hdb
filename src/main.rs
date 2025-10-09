@@ -168,16 +168,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         MemoryCommands::Read { addr, size } => {
                             let mut data = vec![0u8; size];
                             debugger.read_memory(addr, &mut data)?;
-                            for (i, byte) in data.iter().enumerate() {
-                                if i % 16 == 0 {
-                                    if i != 0 {
-                                        println!();
-                                    }
-                                    print!("{:08x}: ", addr + i);
+                            for chunk in data.chunks(16) {
+                                for byte in chunk {
+                                    print!("{:02x} ", byte);
                                 }
-                                print!("{:02x} ", byte);
+                                print!("| ");
+                                for byte in chunk {
+                                    if byte.is_ascii_graphic() {
+                                        print!("{}", *byte as char);
+                                    } else {
+                                        print!(".");
+                                    }
+                                }
+                                println!();
                             }
-                            println!();
                         }
                         MemoryCommands::Write { addr, data } => {
                             debugger.write_memory(addr, &data)?;
