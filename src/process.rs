@@ -98,7 +98,7 @@ impl Process {
                 user.u_debugreg[i] = i64::cast_unsigned(data);
             }
 
-            return Ok(Registers { user });
+            Ok(Registers { user })
         }
 
         #[cfg(not(target_arch = "x86_64"))]
@@ -139,7 +139,7 @@ impl Process {
             }
             */
 
-            return Ok(());
+            Ok(())
         }
 
         #[cfg(not(target_arch = "x86_64"))]
@@ -198,7 +198,7 @@ impl Process {
         // use ptrace_pokedata to write protected memory
         let mut written = 0;
 
-        if addr % 8 != 0 {
+        if !addr.is_multiple_of(8) {
             let aligned_addr = addr - (addr % 8);
             let existing_data = nix::sys::ptrace::read(self.pid(), aligned_addr as *mut c_void)?;
             let mut data = existing_data.to_ne_bytes();

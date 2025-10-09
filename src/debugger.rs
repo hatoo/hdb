@@ -62,7 +62,6 @@ impl BreakPoint {
         if let Some(orig_byte) = self.orig_byte {
             let offset = self.addr - start_addr;
             code[offset] = orig_byte;
-            return;
         }
     }
 }
@@ -79,6 +78,12 @@ impl std::fmt::Display for BreakPointId {
 pub struct BreakPoints {
     next_id: usize,
     points: BTreeMap<BreakPointId, BreakPoint>,
+}
+
+impl Default for BreakPoints {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BreakPoints {
@@ -112,10 +117,10 @@ impl BreakPoints {
         process: &mut Process,
         id: BreakPointId,
     ) -> Result<(), std::io::Error> {
-        if let Some(mut bp) = self.points.remove(&id) {
-            if bp.enabled() {
-                bp.disable(process)?;
-            }
+        if let Some(mut bp) = self.points.remove(&id)
+            && bp.enabled()
+        {
+            bp.disable(process)?;
         }
         Ok(())
     }
@@ -161,7 +166,7 @@ impl Debugger {
 
     pub fn step(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
         if let Some(status) = self.skip_breakpoint()? {
-            return Ok(status);
+            Ok(status)
         } else {
             let status = self.process.single_step()?;
             Ok(status)

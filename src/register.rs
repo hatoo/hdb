@@ -117,7 +117,8 @@ impl RegisterValue {
 impl Registers {
     pub fn read(&self, reg: &RegisterInfo) -> RegisterValue {
         let ptr = (&self.user.regs as *const _ as *const u8).wrapping_add(reg.offset);
-        let value = match reg.size {
+
+        match reg.size {
             8 => RegisterValue::U64(unsafe { *(ptr as *const u64) }),
             1 => RegisterValue::U8(unsafe { *(ptr as *const u8) }),
             16 => {
@@ -129,9 +130,7 @@ impl Registers {
                 RegisterValue::U128(u128::from_le_bytes(bytes))
             }
             _ => unreachable!(),
-        };
-
-        value
+        }
     }
 
     pub fn write(&mut self, reg: &RegisterInfo, value: RegisterValue) {
