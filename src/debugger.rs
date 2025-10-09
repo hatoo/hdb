@@ -259,7 +259,7 @@ impl Debugger {
 
         let mut decoder =
             iced_x86::Decoder::with_ip(64, &code, pc as u64, iced_x86::DecoderOptions::NONE);
-        let mut formatter = iced_x86::NasmFormatter::new();
+        let mut formatter = iced_x86::GasFormatter::new();
         let mut output = String::new();
         let mut instruction = iced_x86::Instruction::default();
         let mut results = Vec::new();
@@ -272,7 +272,7 @@ impl Debugger {
             formatter.format(&instruction, &mut output);
             results.push((
                 instruction.ip() as usize,
-                format!("{}\t{:x?}", output, &code[last_pos..pos]),
+                format!("{}\t{:02x?}", output, &code[last_pos..pos]),
             ));
 
             last_pos = pos;
