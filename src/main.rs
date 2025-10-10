@@ -4,6 +4,7 @@ use hdb::{
     debugger, process,
     register::{REGISTERS, RegisterValue},
 };
+use reedline::FileBackedHistory;
 
 #[derive(Parser, Debug)]
 struct Opt {
@@ -102,7 +103,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     command.args(commands);
 
     let prompt = reedline::DefaultPrompt::default();
-    let mut rl = reedline::Reedline::create();
+    let history = Box::new(
+        FileBackedHistory::with_file(5, "history.txt".into())
+            .expect("Error configuring history with file"),
+    );
+    let mut rl = reedline::Reedline::create().with_history(history);
 
     let process = process::Process::spawn(command)?;
     let mut debugger = debugger::Debugger::new(process);
