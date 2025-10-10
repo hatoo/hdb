@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 
 use hdb::{
     debugger, process,
@@ -48,9 +48,14 @@ enum Commands {
 #[derive(Subcommand, Debug)]
 enum BreakPointCommands {
     #[clap(alias = "add")]
+    #[clap(disable_help_flag = true)]
     Set {
         #[clap(value_parser = parse_int::parse::<usize>)]
         addr: usize,
+        #[clap(short = 'h', long = "hardware", action = ArgAction::SetTrue, help = "Set hardware breakpoint.")]
+        hardware: bool,
+        #[arg(long, action = ArgAction::Help, help = "Show help message.")]
+        help: Option<bool>,
     },
     Remove {
         id: usize,
@@ -151,8 +156,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     },
                     Commands::BreakPoint { command } => match command {
-                        BreakPointCommands::Set { addr } => {
-                            debugger.add_breakpoint(addr)?;
+                        BreakPointCommands::Set { addr, hardware, .. } => {
+                            if hardware {
+                                debugger.add_breakpoint_hardware(addr)?
+                            } else {
+                                debugger.add_breakpoint_software(addr)?
+                            };
                         }
                         BreakPointCommands::Remove { id } => {
                             debugger.remove_breakpoint(hdb::breakpoint::BreakPointId(id))?;

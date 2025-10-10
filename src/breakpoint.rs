@@ -175,7 +175,7 @@ impl BreakPoints {
         }
     }
 
-    pub fn add(
+    pub fn add_software(
         &mut self,
         process: &mut Process,
         addr: usize,
@@ -193,17 +193,39 @@ impl BreakPoints {
         Ok(id)
     }
 
+    pub fn add_hardware(
+        &mut self,
+        process: &mut Process,
+        addr: usize,
+        dr_index: usize,
+    ) -> Result<BreakPointId, std::io::Error> {
+        if let Some((id, _)) = self.points.iter().find(|(_, bp)| bp.addr() == addr) {
+            return Ok(*id);
+        }
+
+        let mut bp = BreakPoint::new_hardware(addr, dr_index)?;
+        bp.enable(process)?;
+
+        let id = BreakPointId(self.next_id);
+        self.points.insert(id, bp);
+        self.next_id += 1;
+        Ok(id)
+    }
+
     pub fn remove(
         &mut self,
         process: &mut Process,
         id: BreakPointId,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<Option<usize>, std::io::Error> {
         if let Some(mut bp) = self.points.remove(&id)
             && bp.enabled()
         {
             bp.disable(process)?;
+            if let BreakPoint::Hardware { dr_index, .. } = bp {
+                return Ok(Some(dr_index));
+            }
         }
-        Ok(())
+        Ok(None)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&BreakPointId, &BreakPoint)> {

@@ -105,13 +105,39 @@ impl Debugger {
         self.breakpoints.iter()
     }
 
-    pub fn add_breakpoint(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
-        let id = self.breakpoints.add(&mut self.process, addr)?;
+    pub fn get_free_dr(&mut self) -> Option<usize> {
+        for (i, used) in self.dr_status.iter().enumerate() {
+            if !*used {
+                self.dr_status[i] = true;
+                return Some(i);
+            }
+        }
+
+        None
+    }
+
+    pub fn release_dr(&mut self, dr_index: usize) {
+        self.dr_status[dr_index] = false;
+    }
+
+    pub fn add_breakpoint_software(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
+        let id = self.breakpoints.add_software(&mut self.process, addr)?;
         Ok(id)
     }
 
+    pub fn add_breakpoint_hardware(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
+        if let Some(id) = self.get_free_dr() {
+            let bp_id = self.breakpoints.add_hardware(&mut self.process, addr, id)?;
+            Ok(bp_id)
+        } else {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "no free dr"));
+        }
+    }
+
     pub fn remove_breakpoint(&mut self, id: BreakPointId) -> Result<(), std::io::Error> {
-        self.breakpoints.remove(&mut self.process, id)?;
+        if let Some(dr_index) = self.breakpoints.remove(&mut self.process, id)? {
+            self.release_dr(dr_index);
+        }
         Ok(())
     }
 
@@ -235,7 +261,7 @@ mod tests {
         let mut debugger = Debugger::new(process);
 
         let load_addr = get_load_addr(hello_world.as_ref(), unsafe { debugger.raw_pid() });
-        debugger.add_breakpoint(load_addr).unwrap();
+        debugger.add_breakpoint_software(load_addr).unwrap();
 
         let status = debugger.resume().unwrap();
         assert!(matches!(
@@ -268,7 +294,7 @@ mod tests {
         let process = Process::spawn(command).unwrap();
         let mut debugger = Debugger::new(process);
         let load_addr = get_load_addr(hello_world.as_ref(), unsafe { debugger.raw_pid() });
-        let bp_id = debugger.add_breakpoint(load_addr).unwrap();
+        let bp_id = debugger.add_breakpoint_software(load_addr).unwrap();
         debugger.remove_breakpoint(bp_id).unwrap();
 
         let status = debugger.resume().unwrap();
@@ -287,7 +313,7 @@ mod tests {
         let process = Process::spawn(command).unwrap();
         let mut debugger = Debugger::new(process);
         let load_addr = get_load_addr(hello_world.as_ref(), unsafe { debugger.raw_pid() });
-        let bp_id = debugger.add_breakpoint(load_addr).unwrap();
+        let bp_id = debugger.add_breakpoint_software(load_addr).unwrap();
 
         assert_eq!(debugger.breakpoints().count(), 1);
         assert_eq!(debugger.breakpoints().next().unwrap().1.addr(), load_addr);
