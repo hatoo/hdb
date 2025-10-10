@@ -118,6 +118,7 @@ impl Process {
                 regs.user.i387,
             )?;
 
+            // DRs
             for i in [0, 1, 2, 3, 6, 7] {
                 nix::sys::ptrace::write_user(
                     self.pid(),
