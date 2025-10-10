@@ -6,6 +6,7 @@ use crate::process::Process;
 pub enum WatchMode {
     Execute,
     Write,
+    #[clap(alias = "rw")]
     ReadWrite,
 }
 
@@ -17,10 +18,9 @@ pub enum BreakPoint {
     },
     Hardware {
         addr: usize,
-        dr_index: usize,
+        dr_index: Option<usize>,
         size: usize,
         mode: WatchMode,
-        enabled: bool,
     },
 }
 
@@ -33,19 +33,7 @@ impl BreakPoint {
         })
     }
 
-    pub fn new_hardware(
-        addr: usize,
-        dr_index: usize,
-        mode: WatchMode,
-        size: usize,
-    ) -> Result<Self, std::io::Error> {
-        if dr_index >= 4 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "dr_index must be 0..3",
-            ));
-        }
-
+    pub fn new_hardware(addr: usize, mode: WatchMode, size: usize) -> Result<Self, std::io::Error> {
         if size != 1 && size != 2 && size != 4 && size != 8 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -69,11 +57,14 @@ impl BreakPoint {
 
         Ok(Self::Hardware {
             addr,
-            dr_index,
+            dr_index: None,
             size,
             mode,
-            enabled: false,
         })
+    }
+
+    pub fn is_hardware(&self) -> bool {
+        matches!(self, BreakPoint::Hardware { .. })
     }
 
     pub fn addr(&self) -> usize {
@@ -86,11 +77,15 @@ impl BreakPoint {
     pub fn enabled(&self) -> bool {
         match self {
             BreakPoint::Software { orig_byte, .. } => orig_byte.is_some(),
-            BreakPoint::Hardware { enabled, .. } => *enabled,
+            BreakPoint::Hardware { dr_index, .. } => dr_index.is_some(),
         }
     }
 
-    pub fn enable(&mut self, process: &mut Process) -> Result<(), std::io::Error> {
+    pub fn enable(
+        &mut self,
+        process: &mut Process,
+        new_dr_index: Option<usize>,
+    ) -> Result<(), std::io::Error> {
         match self {
             BreakPoint::Software { addr, orig_byte } => {
                 assert!(orig_byte.is_none());
@@ -110,18 +105,19 @@ impl BreakPoint {
                 dr_index,
                 size,
                 mode,
-                enabled,
             } => {
                 use crate::register::{DR, RegisterValue};
 
-                assert!(!*enabled);
+                let new_dr = new_dr_index.ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::Other, "no available debug register")
+                })?;
+                *dr_index = Some(new_dr);
 
                 let mut regs = process.read_registers()?;
                 let dr7 = regs.read(&DR[7]).as_usize();
-                let dr_index = *dr_index;
-                regs.write(&DR[dr_index], RegisterValue::U64(*addr as _));
+                regs.write(&DR[new_dr], RegisterValue::U64(*addr as _));
 
-                let clear_mask = 0b11 << (dr_index * 2) | (0b1111 << (16 + dr_index * 4));
+                let clear_mask = 0b11 << (new_dr * 2) | (0b1111 << (16 + new_dr * 4));
                 let rw_bits = match mode {
                     WatchMode::Execute => 0b00,
                     WatchMode::Write => 0b01,
@@ -136,21 +132,19 @@ impl BreakPoint {
                 };
 
                 let new_dr7 = (dr7 & !clear_mask)
-                    | (0b01 << (dr_index * 2)) // local enable
-                    | (rw_bits << (16 + dr_index * 4)) // rw bits
-                    | (size_bits << (18 + dr_index * 4)) // size bits
+                    | (0b01 << (new_dr * 2)) // local enable
+                    | (rw_bits << (16 + new_dr * 4)) // rw bits
+                    | (size_bits << (18 + new_dr * 4)) // size bits
                     ;
                 regs.write(&DR[7], RegisterValue::U64(new_dr7 as _));
-
                 process.write_registers(&regs)?;
-                *enabled = true;
 
                 Ok(())
             }
         }
     }
 
-    pub fn disable(&mut self, process: &mut Process) -> Result<(), std::io::Error> {
+    pub fn disable(&mut self, process: &mut Process) -> Result<Option<usize>, std::io::Error> {
         match self {
             BreakPoint::Software { addr, orig_byte } => {
                 assert!(orig_byte.is_some());
@@ -162,25 +156,22 @@ impl BreakPoint {
                 let restored_data = (orig_data & !(0xff << (offset * 8)))
                     | ((orig_byte.take().unwrap() as u64) << (offset * 8));
                 process.write(aligned_addr, restored_data.cast_signed())?;
-                Ok(())
+                Ok(None)
             }
-            BreakPoint::Hardware {
-                dr_index, enabled, ..
-            } => {
+            BreakPoint::Hardware { dr_index, .. } => {
+                let dr_index = dr_index.take().unwrap();
                 use crate::register::{DR, RegisterValue};
 
                 let mut regs = process.read_registers()?;
-                assert!(*enabled);
 
                 let mut dr7 = regs.read(&DR[7]).as_usize();
-                let clear_mask = 0b11 << (*dr_index * 2) | (0b1111 << (16 + *dr_index * 4));
+                let clear_mask = 0b11 << (dr_index * 2) | (0b1111 << (16 + dr_index * 4));
                 dr7 &= !clear_mask;
-                regs.write(&DR[*dr_index], RegisterValue::U64(dr7 as _));
+                regs.write(&DR[dr_index], RegisterValue::U64(dr7 as _));
 
                 process.write_registers(&regs)?;
-                *enabled = false;
 
-                Ok(())
+                Ok(Some(dr_index))
             }
         }
     }
@@ -228,17 +219,12 @@ impl BreakPoints {
         }
     }
 
-    pub fn add_software(
-        &mut self,
-        process: &mut Process,
-        addr: usize,
-    ) -> Result<BreakPointId, std::io::Error> {
+    pub fn add_software(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
         if let Some((id, _)) = self.points.iter().find(|(_, bp)| bp.addr() == addr) {
             return Ok(*id);
         }
 
-        let mut bp = BreakPoint::new_software(addr)?;
-        bp.enable(process)?;
+        let bp = BreakPoint::new_software(addr)?;
 
         let id = BreakPointId(self.next_id);
         self.points.insert(id, bp);
@@ -246,18 +232,12 @@ impl BreakPoints {
         Ok(id)
     }
 
-    pub fn add_hardware(
-        &mut self,
-        process: &mut Process,
-        addr: usize,
-        dr_index: usize,
-    ) -> Result<BreakPointId, std::io::Error> {
+    pub fn add_hardware(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
         if let Some((id, _)) = self.points.iter().find(|(_, bp)| bp.addr() == addr) {
             return Ok(*id);
         }
 
-        let mut bp = BreakPoint::new_hardware(addr, dr_index, WatchMode::Execute, 1)?;
-        bp.enable(process)?;
+        let bp = BreakPoint::new_hardware(addr, WatchMode::Execute, 1)?;
 
         let id = BreakPointId(self.next_id);
         self.points.insert(id, bp);
@@ -267,9 +247,7 @@ impl BreakPoints {
 
     pub fn add_watchpoint(
         &mut self,
-        process: &mut Process,
         addr: usize,
-        dr_index: usize,
         size: usize,
         mode: WatchMode,
     ) -> Result<BreakPointId, std::io::Error> {
@@ -277,13 +255,26 @@ impl BreakPoints {
             return Ok(*id);
         }
 
-        let mut bp = BreakPoint::new_hardware(addr, dr_index, mode, size)?;
-        bp.enable(process)?;
+        let bp = BreakPoint::new_hardware(addr, mode, size)?;
 
         let id = BreakPointId(self.next_id);
         self.points.insert(id, bp);
         self.next_id += 1;
         Ok(id)
+    }
+
+    pub fn enable(
+        &mut self,
+        process: &mut Process,
+        id: BreakPointId,
+        dr_index: Option<usize>,
+    ) -> Result<(), std::io::Error> {
+        if let Some(bp) = self.points.get_mut(&id) {
+            if !bp.enabled() {
+                bp.enable(process, dr_index)?;
+            }
+        }
+        Ok(())
     }
 
     pub fn remove(
@@ -294,10 +285,8 @@ impl BreakPoints {
         if let Some(mut bp) = self.points.remove(&id)
             && bp.enabled()
         {
-            bp.disable(process)?;
-            if let BreakPoint::Hardware { dr_index, .. } = bp {
-                return Ok(Some(dr_index));
-            }
+            let dr_index = bp.disable(process)?;
+            return Ok(dr_index);
         }
         Ok(None)
     }

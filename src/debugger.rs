@@ -30,14 +30,16 @@ impl Debugger {
 
     fn skip_breakpoint(&mut self) -> Result<Option<nix::sys::wait::WaitStatus>, std::io::Error> {
         let pc = self.get_pc()?;
-        if self.breakpoints.break_point_at(pc - 1).is_some() {
+        if let Some(breakpoint) = self.breakpoints.break_point_at(pc - 1)
+            && !breakpoint.is_hardware()
+        {
             self.set_pc(pc - 1)?;
             let Some(breakpoint) = self.breakpoints.break_point_at(pc - 1) else {
                 unreachable!()
             };
             breakpoint.disable(&mut self.process)?;
             let status = self.process.single_step()?;
-            breakpoint.enable(&mut self.process)?;
+            breakpoint.enable(&mut self.process, None)?;
             Ok(Some(status))
         } else {
             Ok(None)
@@ -121,13 +123,16 @@ impl Debugger {
     }
 
     pub fn add_breakpoint_software(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
-        let id = self.breakpoints.add_software(&mut self.process, addr)?;
+        let id = self.breakpoints.add_software(addr)?;
+        self.breakpoints.enable(&mut self.process, id, None)?;
         Ok(id)
     }
 
     pub fn add_breakpoint_hardware(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
-        if let Some(id) = self.take_free_dr() {
-            let bp_id = self.breakpoints.add_hardware(&mut self.process, addr, id)?;
+        if let Some(dr_index) = self.take_free_dr() {
+            let bp_id = self.breakpoints.add_hardware(addr)?;
+            self.breakpoints
+                .enable(&mut self.process, bp_id, Some(dr_index))?;
             Ok(bp_id)
         } else {
             return Err(std::io::Error::new(std::io::ErrorKind::Other, "no free dr"));
@@ -141,9 +146,9 @@ impl Debugger {
         mode: WatchMode,
     ) -> Result<BreakPointId, std::io::Error> {
         if let Some(id) = self.take_free_dr() {
-            let bp_id = self
-                .breakpoints
-                .add_watchpoint(&mut self.process, addr, id, size, mode)?;
+            let bp_id = self.breakpoints.add_watchpoint(addr, size, mode)?;
+            self.breakpoints
+                .enable(&mut self.process, bp_id, Some(id))?;
             Ok(bp_id)
         } else {
             return Err(std::io::Error::new(std::io::ErrorKind::Other, "no free dr"));
