@@ -155,7 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             debugger.add_breakpoint(addr)?;
                         }
                         BreakPointCommands::Remove { id } => {
-                            debugger.remove_breakpoint(debugger::BreakPointId(id))?;
+                            debugger.remove_breakpoint(hdb::breakpoint::BreakPointId(id))?;
                         }
                         BreakPointCommands::List => {
                             for (id, bp) in debugger.breakpoints() {
