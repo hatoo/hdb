@@ -290,7 +290,7 @@ mod tests {
         let bp_id = debugger.add_breakpoint(load_addr).unwrap();
 
         assert_eq!(debugger.breakpoints().count(), 1);
-        assert_eq!(debugger.breakpoints().next().unwrap().1.addr, load_addr);
+        assert_eq!(debugger.breakpoints().next().unwrap().1.addr(), load_addr);
 
         debugger.remove_breakpoint(bp_id).unwrap();
         assert_eq!(debugger.breakpoints().count(), 0);
