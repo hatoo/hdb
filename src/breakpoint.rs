@@ -2,7 +2,14 @@ use std::collections::BTreeMap;
 
 use crate::process::Process;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, clap::ValueEnum)]
+pub enum WatchMode {
+    Execute,
+    Write,
+    ReadWrite,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BreakPoint {
     Software {
         addr: usize,
@@ -11,6 +18,8 @@ pub enum BreakPoint {
     Hardware {
         addr: usize,
         dr_index: usize,
+        size: usize,
+        mode: WatchMode,
         enabled: bool,
     },
 }
@@ -24,7 +33,12 @@ impl BreakPoint {
         })
     }
 
-    pub fn new_hardware(addr: usize, dr_index: usize) -> Result<Self, std::io::Error> {
+    pub fn new_hardware(
+        addr: usize,
+        dr_index: usize,
+        mode: WatchMode,
+        size: usize,
+    ) -> Result<Self, std::io::Error> {
         if dr_index >= 4 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -32,9 +46,32 @@ impl BreakPoint {
             ));
         }
 
+        if size != 1 && size != 2 && size != 4 && size != 8 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "size must be 1, 2, 4, or 8",
+            ));
+        }
+
+        if mode == WatchMode::Execute && size != 1 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "size must be 1 for execute watchpoint",
+            ));
+        }
+
+        if addr & (size - 1) != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "addr must be aligned to size",
+            ));
+        }
+
         Ok(Self::Hardware {
             addr,
             dr_index,
+            size,
+            mode,
             enabled: false,
         })
     }
@@ -71,6 +108,8 @@ impl BreakPoint {
             BreakPoint::Hardware {
                 addr,
                 dr_index,
+                size,
+                mode,
                 enabled,
             } => {
                 use crate::register::{DR, RegisterValue};
@@ -83,10 +122,24 @@ impl BreakPoint {
                 regs.write(&DR[dr_index], RegisterValue::U64(*addr as _));
 
                 let clear_mask = 0b11 << (dr_index * 2) | (0b1111 << (16 + dr_index * 4));
+                let rw_bits = match mode {
+                    WatchMode::Execute => 0b00,
+                    WatchMode::Write => 0b01,
+                    WatchMode::ReadWrite => 0b11,
+                };
+                let size_bits = match size {
+                    1 => 0b00,
+                    2 => 0b01,
+                    4 => 0b11,
+                    8 => 0b10,
+                    _ => unreachable!(),
+                };
+
                 let new_dr7 = (dr7 & !clear_mask)
                     | (0b01 << (dr_index * 2)) // local enable
-                    | (0b00 << (16 + dr_index * 4)); // exec
-                // size 1 (00)
+                    | (rw_bits << (16 + dr_index * 4)) // rw bits
+                    | (size_bits << (18 + dr_index * 4)) // size bits
+                    ;
                 regs.write(&DR[7], RegisterValue::U64(new_dr7 as _));
 
                 process.write_registers(&regs)?;
@@ -203,7 +256,28 @@ impl BreakPoints {
             return Ok(*id);
         }
 
-        let mut bp = BreakPoint::new_hardware(addr, dr_index)?;
+        let mut bp = BreakPoint::new_hardware(addr, dr_index, WatchMode::Execute, 1)?;
+        bp.enable(process)?;
+
+        let id = BreakPointId(self.next_id);
+        self.points.insert(id, bp);
+        self.next_id += 1;
+        Ok(id)
+    }
+
+    pub fn add_watchpoint(
+        &mut self,
+        process: &mut Process,
+        addr: usize,
+        dr_index: usize,
+        size: usize,
+        mode: WatchMode,
+    ) -> Result<BreakPointId, std::io::Error> {
+        if let Some((id, _)) = self.points.iter().find(|(_, bp)| bp.addr() == addr) {
+            return Ok(*id);
+        }
+
+        let mut bp = BreakPoint::new_hardware(addr, dr_index, mode, size)?;
         bp.enable(process)?;
 
         let id = BreakPointId(self.next_id);

@@ -1,7 +1,7 @@
 use iced_x86::Formatter;
 
 use crate::{
-    breakpoint::{BreakPoint, BreakPointId, BreakPoints},
+    breakpoint::{BreakPoint, BreakPointId, BreakPoints, WatchMode},
     process::Process,
     register::RegisterInfo,
 };
@@ -128,6 +128,22 @@ impl Debugger {
     pub fn add_breakpoint_hardware(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
         if let Some(id) = self.take_free_dr() {
             let bp_id = self.breakpoints.add_hardware(&mut self.process, addr, id)?;
+            Ok(bp_id)
+        } else {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "no free dr"));
+        }
+    }
+
+    pub fn add_watchpoint(
+        &mut self,
+        addr: usize,
+        size: usize,
+        mode: WatchMode,
+    ) -> Result<BreakPointId, std::io::Error> {
+        if let Some(id) = self.take_free_dr() {
+            let bp_id = self
+                .breakpoints
+                .add_watchpoint(&mut self.process, addr, id, size, mode)?;
             Ok(bp_id)
         } else {
             return Err(std::io::Error::new(std::io::ErrorKind::Other, "no free dr"));
@@ -401,6 +417,38 @@ mod tests {
 
         // Test hw breakpoint isn't detected
         debugger.add_breakpoint_hardware(addr).unwrap();
+        dbg!(debugger.resume().unwrap());
+        dbg!(debugger.resume().unwrap());
+        let expected = b"Putting pineapple on pizza...\n";
+        let mut buf = vec![0u8; expected.len()];
+        rx.read_exact(&mut buf).unwrap();
+        assert_eq!(buf.as_slice(), expected);
+    }
+
+    #[test]
+    fn test_watchpoint() {
+        let watchpoint = crate::test::compile("tests/anti_debugger.cpp");
+        let (mut rx, tx) = std::io::pipe().unwrap();
+        let mut command = Command::new(watchpoint.as_os_str());
+        unsafe {
+            command.pre_exec(move || {
+                libc::close(libc::STDOUT_FILENO);
+                libc::dup2(tx.as_raw_fd(), libc::STDOUT_FILENO);
+                Ok(())
+            });
+        }
+
+        let process = Process::spawn(command).unwrap();
+        let mut debugger = Debugger::new(process);
+        dbg!(debugger.resume().unwrap());
+
+        let mut addr = [0u8; 8];
+        rx.read_exact(&mut addr).unwrap();
+        let addr = usize::from_le_bytes(addr);
+        debugger
+            .add_watchpoint(addr, 1, WatchMode::ReadWrite)
+            .unwrap();
+
         dbg!(debugger.resume().unwrap());
         dbg!(debugger.resume().unwrap());
         let expected = b"Putting pineapple on pizza...\n";

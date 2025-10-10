@@ -1,6 +1,7 @@
 use clap::{ArgAction, Parser, Subcommand};
 
 use hdb::{
+    breakpoint::WatchMode,
     debugger, process,
     register::{REGISTERS, RegisterValue},
 };
@@ -57,6 +58,13 @@ enum BreakPointCommands {
         hardware: bool,
         #[arg(long, action = ArgAction::Help, help = "Show help message.")]
         help: Option<bool>,
+    },
+    Watch {
+        #[clap(value_parser = parse_int::parse::<usize>)]
+        addr: usize,
+        #[clap(value_parser = parse_int::parse::<usize>)]
+        size: usize,
+        mode: WatchMode,
     },
     Remove {
         id: usize,
@@ -167,6 +175,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             } else {
                                 debugger.add_breakpoint_software(addr)?
                             };
+                        }
+                        BreakPointCommands::Watch { addr, size, mode } => {
+                            debugger.add_watchpoint(addr, size, mode)?;
                         }
                         BreakPointCommands::Remove { id } => {
                             debugger.remove_breakpoint(hdb::breakpoint::BreakPointId(id))?;
