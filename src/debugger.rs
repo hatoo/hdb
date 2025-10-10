@@ -365,4 +365,47 @@ mod tests {
         std::io::Read::read_to_string(&mut rx, &mut output).unwrap();
         assert_eq!(output, "hello hdb");
     }
+
+    #[test]
+    fn test_hw_breakpoint() {
+        let anti_debugger = crate::test::compile("tests/anti_debugger.cpp");
+        let (mut rx, tx) = std::io::pipe().unwrap();
+        let mut command = Command::new(anti_debugger.as_os_str());
+        unsafe {
+            command.pre_exec(move || {
+                libc::close(libc::STDOUT_FILENO);
+                libc::dup2(tx.as_raw_fd(), libc::STDOUT_FILENO);
+                Ok(())
+            });
+        }
+
+        let process = Process::spawn(command).unwrap();
+        let mut debugger = Debugger::new(process);
+
+        dbg!(debugger.resume().unwrap());
+
+        let mut addr = [0u8; 8];
+        rx.read_exact(&mut addr).unwrap();
+        let addr = usize::from_le_bytes(addr);
+
+        // Test sw breakpoint is detected
+        let bp_id = debugger.add_breakpoint_software(addr).unwrap();
+        dbg!(debugger.resume().unwrap());
+
+        let expected = b"Putting pepperoni on pizza...\n";
+        let mut buf = vec![0u8; expected.len()];
+        rx.read_exact(&mut buf).unwrap();
+        assert_eq!(buf.as_slice(), expected);
+
+        debugger.remove_breakpoint(bp_id).unwrap();
+
+        // Test hw breakpoint isn't detected
+        debugger.add_breakpoint_hardware(addr).unwrap();
+        dbg!(debugger.resume().unwrap());
+        dbg!(debugger.resume().unwrap());
+        let expected = b"Putting pineapple on pizza...\n";
+        let mut buf = vec![0u8; expected.len()];
+        rx.read_exact(&mut buf).unwrap();
+        assert_eq!(buf.as_slice(), expected);
+    }
 }
