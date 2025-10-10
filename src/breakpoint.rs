@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::process::Process;
+use crate::{process::Process, register::DrIndex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, clap::ValueEnum)]
 pub enum WatchMode {
@@ -18,7 +18,7 @@ pub enum BreakPoint {
     },
     Hardware {
         addr: usize,
-        dr_index: Option<usize>,
+        dr_index: Option<DrIndex>,
         size: usize,
         mode: WatchMode,
     },
@@ -84,7 +84,7 @@ impl BreakPoint {
     pub fn enable(
         &mut self,
         process: &mut Process,
-        new_dr_index: Option<usize>,
+        new_dr_index: Option<DrIndex>,
     ) -> Result<(), std::io::Error> {
         match self {
             BreakPoint::Software { addr, orig_byte } => {
@@ -115,9 +115,9 @@ impl BreakPoint {
 
                 let mut regs = process.read_registers()?;
                 let dr7 = regs.read(&DR[7]).as_usize();
-                regs.write(&DR[new_dr], RegisterValue::U64(*addr as _));
+                regs.write(&DR[*new_dr], RegisterValue::U64(*addr as _));
 
-                let clear_mask = 0b11 << (new_dr * 2) | (0b1111 << (16 + new_dr * 4));
+                let clear_mask = 0b11 << (*new_dr * 2) | (0b1111 << (16 + *new_dr * 4));
                 let rw_bits = match mode {
                     WatchMode::Execute => 0b00,
                     WatchMode::Write => 0b01,
@@ -132,9 +132,9 @@ impl BreakPoint {
                 };
 
                 let new_dr7 = (dr7 & !clear_mask)
-                    | (0b01 << (new_dr * 2)) // local enable
-                    | (rw_bits << (16 + new_dr * 4)) // rw bits
-                    | (size_bits << (18 + new_dr * 4)) // size bits
+                    | (0b01 << (*new_dr * 2)) // local enable
+                    | (rw_bits << (16 + *new_dr * 4)) // rw bits
+                    | (size_bits << (18 + *new_dr * 4)) // size bits
                     ;
                 regs.write(&DR[7], RegisterValue::U64(new_dr7 as _));
                 process.write_registers(&regs)?;
@@ -144,7 +144,7 @@ impl BreakPoint {
         }
     }
 
-    pub fn disable(&mut self, process: &mut Process) -> Result<Option<usize>, std::io::Error> {
+    pub fn disable(&mut self, process: &mut Process) -> Result<Option<DrIndex>, std::io::Error> {
         match self {
             BreakPoint::Software { addr, orig_byte } => {
                 assert!(orig_byte.is_some());
@@ -165,9 +165,9 @@ impl BreakPoint {
                 let mut regs = process.read_registers()?;
 
                 let mut dr7 = regs.read(&DR[7]).as_usize();
-                let clear_mask = 0b11 << (dr_index * 2) | (0b1111 << (16 + dr_index * 4));
+                let clear_mask = 0b11 << (*dr_index * 2) | (0b1111 << (16 + *dr_index * 4));
                 dr7 &= !clear_mask;
-                regs.write(&DR[dr_index], RegisterValue::U64(dr7 as _));
+                regs.write(&DR[*dr_index], RegisterValue::U64(dr7 as _));
 
                 process.write_registers(&regs)?;
 
@@ -267,7 +267,7 @@ impl BreakPoints {
         &mut self,
         process: &mut Process,
         id: BreakPointId,
-        dr_index: Option<usize>,
+        dr_index: Option<DrIndex>,
     ) -> Result<(), std::io::Error> {
         if let Some(bp) = self.points.get_mut(&id) {
             if !bp.enabled() {
@@ -281,7 +281,7 @@ impl BreakPoints {
         &mut self,
         process: &mut Process,
         id: BreakPointId,
-    ) -> Result<Option<usize>, std::io::Error> {
+    ) -> Result<Option<DrIndex>, std::io::Error> {
         if let Some(mut bp) = self.points.remove(&id)
             && bp.enabled()
         {

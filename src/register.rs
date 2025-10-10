@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 pub enum RegisterType {
     Gpr,
     SubGpr,
@@ -42,6 +44,26 @@ impl RegisterValue {
         }
     }
 }
+
+/// TODO: Make it more ISA agnostic
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DrIndex(usize);
+
+impl Deref for DrIndex {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DrIndex {
+    pub fn new(index: usize) -> Self {
+        assert!(index < 4);
+        Self(index)
+    }
+}
+
 #[cfg(target_arch = "x86_64")]
 pub const PC: RegisterInfo = RegisterInfo {
     name: "rip",

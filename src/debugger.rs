@@ -3,7 +3,7 @@ use iced_x86::Formatter;
 use crate::{
     breakpoint::{BreakPoint, BreakPointId, BreakPoints, WatchMode},
     process::Process,
-    register::RegisterInfo,
+    register::{DrIndex, RegisterInfo},
 };
 
 pub struct Debugger {
@@ -107,19 +107,19 @@ impl Debugger {
         self.breakpoints.iter()
     }
 
-    pub fn take_free_dr(&mut self) -> Option<usize> {
+    pub fn take_free_dr(&mut self) -> Option<DrIndex> {
         for (i, used) in self.dr_status.iter_mut().enumerate() {
             if !*used {
                 *used = true;
-                return Some(i);
+                return Some(DrIndex::new(i));
             }
         }
 
         None
     }
 
-    pub fn release_dr(&mut self, dr_index: usize) {
-        self.dr_status[dr_index] = false;
+    pub fn release_dr(&mut self, dr_index: DrIndex) {
+        self.dr_status[*dr_index] = false;
     }
 
     pub fn add_breakpoint_software(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
