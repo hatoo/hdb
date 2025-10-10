@@ -118,26 +118,13 @@ impl Process {
                 regs.user.i387,
             )?;
 
-            /*
-            for i in 0..8 {
-                if unsafe {
-                    libc::ptrace(
-                        libc::PTRACE_POKEUSER,
-                        self.pid,
-                        std::mem::offset_of!(libc::user, u_debugreg).wrapping_add(i * 8)
-                            as *const c_void,
-                        regs.user.u_debugreg[i] as *const c_void,
-                    )
-                } < 0
-                {
-                    eprint!(
-                        "Failed to set debugreg: {}",
-                        std::io::Error::last_os_error()
-                    );
-                    return Err(std::io::Error::last_os_error());
-                }
+            for i in [0, 1, 2, 3, 6, 7] {
+                nix::sys::ptrace::write_user(
+                    self.pid(),
+                    (std::mem::offset_of!(libc::user, u_debugreg) + i * 8) as *mut c_void,
+                    regs.user.u_debugreg[i] as i64,
+                )?;
             }
-            */
 
             Ok(())
         }
