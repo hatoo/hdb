@@ -105,7 +105,7 @@ impl Debugger {
         self.breakpoints.iter()
     }
 
-    pub fn get_free_dr(&mut self) -> Option<usize> {
+    pub fn take_free_dr(&mut self) -> Option<usize> {
         for (i, used) in self.dr_status.iter().enumerate() {
             if !*used {
                 self.dr_status[i] = true;
@@ -126,7 +126,7 @@ impl Debugger {
     }
 
     pub fn add_breakpoint_hardware(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
-        if let Some(id) = self.get_free_dr() {
+        if let Some(id) = self.take_free_dr() {
             let bp_id = self.breakpoints.add_hardware(&mut self.process, addr, id)?;
             Ok(bp_id)
         } else {
