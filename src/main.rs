@@ -47,8 +47,8 @@ enum Commands {
 
 #[derive(Subcommand, Debug)]
 enum BreakPointCommands {
-    #[clap(alias = "set")]
-    Add {
+    #[clap(alias = "add")]
+    Set {
         #[clap(value_parser = parse_int::parse::<usize>)]
         addr: usize,
     },
@@ -151,7 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     },
                     Commands::BreakPoint { command } => match command {
-                        BreakPointCommands::Add { addr } => {
+                        BreakPointCommands::Set { addr } => {
                             debugger.add_breakpoint(addr)?;
                         }
                         BreakPointCommands::Remove { id } => {
