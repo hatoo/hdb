@@ -106,9 +106,9 @@ impl Debugger {
     }
 
     pub fn take_free_dr(&mut self) -> Option<usize> {
-        for (i, used) in self.dr_status.iter().enumerate() {
+        for (i, used) in self.dr_status.iter_mut().enumerate() {
             if !*used {
-                self.dr_status[i] = true;
+                *used = true;
                 return Some(i);
             }
         }
