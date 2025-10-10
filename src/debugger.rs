@@ -9,6 +9,8 @@ use crate::{
 pub struct Debugger {
     process: Process,
     breakpoints: BreakPoints,
+    // used drs
+    dr_status: [bool; 4],
 }
 
 impl Debugger {
@@ -16,6 +18,7 @@ impl Debugger {
         Self {
             process,
             breakpoints: BreakPoints::new(),
+            dr_status: [false; 4],
         }
     }
 
