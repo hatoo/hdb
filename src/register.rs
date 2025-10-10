@@ -52,6 +52,123 @@ pub const PC: RegisterInfo = RegisterInfo {
 };
 
 #[cfg(target_arch = "x86_64")]
+pub const DR: [RegisterInfo; 16] = [
+    RegisterInfo {
+        name: "dr0",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg),
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr1",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 8,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr2",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 16,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr3",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 24,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr4",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 32,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr5",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 40,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr6",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 48,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr7",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 56,
+        size: 8,
+    },
+    // dr8 - dr15 are reserved
+    RegisterInfo {
+        name: "dr8",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 64,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr9",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 72,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr10",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 80,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr11",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 88,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr12",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 96,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr13",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 104,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr14",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 112,
+        size: 8,
+    },
+    RegisterInfo {
+        name: "dr15",
+        reg_type: RegisterType::Dr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, u_debugreg) + 120,
+        size: 8,
+    },
+];
+
+#[cfg(target_arch = "x86_64")]
 pub const REGISTERS: &[RegisterInfo] = &[
     RegisterInfo {
         name: "rip",
