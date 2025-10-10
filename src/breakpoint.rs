@@ -11,6 +11,7 @@ pub enum WatchMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// Software or Hardware breakpoint/watchpoint
 pub enum BreakPoint {
     Software {
         addr: usize,
