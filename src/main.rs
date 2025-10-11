@@ -200,7 +200,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             debugger.add_watchpoint(addr, size, mode)?;
                         }
                         BreakPointCommands::Remove { id } => {
-                            debugger.remove_breakpoint(hdb::breakpoint::StopPointId(id))?;
+                            debugger.remove_stop_point(hdb::breakpoint::StopPointId(id))?;
                         }
                         BreakPointCommands::List => {
                             for (id, bp) in debugger.stop_points() {

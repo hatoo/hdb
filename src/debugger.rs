@@ -197,7 +197,7 @@ impl Debugger {
         }
     }
 
-    pub fn remove_breakpoint(&mut self, id: StopPointId) -> Result<(), std::io::Error> {
+    pub fn remove_stop_point(&mut self, id: StopPointId) -> Result<(), std::io::Error> {
         if let Some(dr_index) = self.stop_points.remove(&mut self.process, id)? {
             self.release_dr(dr_index);
         }
@@ -361,7 +361,7 @@ mod tests {
         let mut debugger = Debugger::new(process);
         let load_addr = get_load_addr(hello_world.as_ref(), unsafe { debugger.raw_pid() });
         let bp_id = debugger.add_breakpoint_software(load_addr).unwrap();
-        debugger.remove_breakpoint(bp_id).unwrap();
+        debugger.remove_stop_point(bp_id).unwrap();
 
         let status = debugger.resume().unwrap();
         let mut output = String::new();
@@ -390,7 +390,7 @@ mod tests {
             Some(load_addr)
         );
 
-        debugger.remove_breakpoint(bp_id).unwrap();
+        debugger.remove_stop_point(bp_id).unwrap();
         assert_eq!(debugger.stop_points().count(), 0);
     }
 
@@ -469,7 +469,7 @@ mod tests {
         rx.read_exact(&mut buf).unwrap();
         assert_eq!(buf.as_slice(), expected);
 
-        debugger.remove_breakpoint(bp_id).unwrap();
+        debugger.remove_stop_point(bp_id).unwrap();
 
         // Test hw breakpoint isn't detected
         debugger.add_breakpoint_hardware(addr).unwrap();
