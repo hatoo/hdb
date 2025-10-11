@@ -68,6 +68,10 @@ impl Debugger {
         Ok(status)
     }
 
+    pub fn siginfo(&mut self) -> Result<libc::siginfo_t, std::io::Error> {
+        self.process.siginfo()
+    }
+
     pub fn get_pc(&mut self) -> Result<usize, std::io::Error> {
         let rip = self.read_register(&crate::register::PC)?.as_usize();
         Ok(rip)
