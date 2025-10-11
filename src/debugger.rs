@@ -52,7 +52,7 @@ impl std::fmt::Display for CatchPoints {
 
 pub struct Debugger {
     process: Process,
-    breakpoints: StopPoints,
+    stop_points: StopPoints,
     // used drs
     dr_status: [bool; 4],
 }
@@ -61,7 +61,7 @@ impl Debugger {
     pub fn new(process: crate::process::Process) -> Self {
         Self {
             process,
-            breakpoints: StopPoints::new(),
+            stop_points: StopPoints::new(),
             dr_status: [false; 4],
         }
     }
@@ -72,14 +72,14 @@ impl Debugger {
         unsafe { self.process.raw_pid() }
     }
 
-    fn skip_breakpoint(&mut self) -> Result<Option<nix::sys::wait::WaitStatus>, std::io::Error> {
+    fn skip_stop_point(&mut self) -> Result<Option<nix::sys::wait::WaitStatus>, std::io::Error> {
         let pc = self.get_pc()?;
-        if let Some(breakpoint) = self.breakpoints.break_point_at(pc - 1)
+        if let Some(breakpoint) = self.stop_points.break_point_at(pc - 1)
             && breakpoint.enabled()
             && !breakpoint.is_hardware()
         {
             self.set_pc(pc - 1)?;
-            let Some(breakpoint) = self.breakpoints.break_point_at(pc - 1) else {
+            let Some(breakpoint) = self.stop_points.break_point_at(pc - 1) else {
                 unreachable!()
             };
             breakpoint.disable(&mut self.process)?;
@@ -92,7 +92,7 @@ impl Debugger {
     }
 
     pub fn step(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
-        if let Some(status) = self.skip_breakpoint()? {
+        if let Some(status) = self.skip_stop_point()? {
             Ok(status)
         } else {
             let status = self.process.single_step()?;
@@ -101,9 +101,9 @@ impl Debugger {
     }
 
     pub fn resume(&mut self) -> Result<StopReason, std::io::Error> {
-        self.skip_breakpoint()?;
+        self.skip_stop_point()?;
 
-        if self.breakpoints.contains_syscall_catch() {
+        if self.stop_points.contains_syscall_catch() {
             self.process.ptrace_syscall()?;
         } else {
             self.process.ptrace_cont()?;
@@ -122,7 +122,7 @@ impl Debugger {
             self.process.ptrace_syscall()?;
             let _status = self.process.wait_on_signal()?;
 
-            if self.breakpoints.contains(syscall) {
+            if self.stop_points.contains(syscall) {
                 return Ok(StopReason::SysCall(syscall));
             } else {
                 return self.resume();
@@ -177,8 +177,8 @@ impl Debugger {
         self.process.write_at(addr, data)
     }
 
-    pub fn breakpoints(&self) -> impl Iterator<Item = (&StopPointId, &StopPoint)> {
-        self.breakpoints.iter()
+    pub fn stop_points(&self) -> impl Iterator<Item = (&StopPointId, &StopPoint)> {
+        self.stop_points.iter()
     }
 
     pub fn take_free_dr(&mut self) -> Option<DrIndex> {
@@ -197,15 +197,15 @@ impl Debugger {
     }
 
     pub fn add_breakpoint_software(&mut self, addr: usize) -> Result<StopPointId, std::io::Error> {
-        let id = self.breakpoints.add_software(addr)?;
-        self.breakpoints.enable(&mut self.process, id, None)?;
+        let id = self.stop_points.add_software(addr)?;
+        self.stop_points.enable(&mut self.process, id, None)?;
         Ok(id)
     }
 
     pub fn add_breakpoint_hardware(&mut self, addr: usize) -> Result<StopPointId, std::io::Error> {
         if let Some(dr_index) = self.take_free_dr() {
-            let bp_id = self.breakpoints.add_hardware(addr)?;
-            self.breakpoints
+            let bp_id = self.stop_points.add_hardware(addr)?;
+            self.stop_points
                 .enable(&mut self.process, bp_id, Some(dr_index))?;
             Ok(bp_id)
         } else {
@@ -217,7 +217,7 @@ impl Debugger {
         &mut self,
         syscall: Option<i64>,
     ) -> Result<StopPointId, std::io::Error> {
-        self.breakpoints.add_syscall_catch(syscall)
+        self.stop_points.add_syscall_catch(syscall)
     }
 
     pub fn add_watchpoint(
@@ -227,8 +227,8 @@ impl Debugger {
         mode: WatchMode,
     ) -> Result<StopPointId, std::io::Error> {
         if let Some(id) = self.take_free_dr() {
-            let bp_id = self.breakpoints.add_watchpoint(addr, size, mode)?;
-            self.breakpoints
+            let bp_id = self.stop_points.add_watchpoint(addr, size, mode)?;
+            self.stop_points
                 .enable(&mut self.process, bp_id, Some(id))?;
             Ok(bp_id)
         } else {
@@ -237,7 +237,7 @@ impl Debugger {
     }
 
     pub fn remove_breakpoint(&mut self, id: StopPointId) -> Result<(), std::io::Error> {
-        if let Some(dr_index) = self.breakpoints.remove(&mut self.process, id)? {
+        if let Some(dr_index) = self.stop_points.remove(&mut self.process, id)? {
             self.release_dr(dr_index);
         }
         Ok(())
@@ -252,7 +252,7 @@ impl Debugger {
             addr
         } else {
             let pc = self.get_pc()?;
-            if self.breakpoints.break_point_at(pc - 1).is_some() {
+            if self.stop_points.break_point_at(pc - 1).is_some() {
                 pc - 1
             } else {
                 pc
@@ -261,7 +261,7 @@ impl Debugger {
         let mut code = vec![0u8; count * 15];
         self.read_memory(pc, &mut code)?;
 
-        self.breakpoints.restore_code(pc, &mut code);
+        self.stop_points.restore_code(pc, &mut code);
 
         let mut decoder =
             iced_x86::Decoder::with_ip(64, &code, pc as u64, iced_x86::DecoderOptions::NONE);
@@ -423,14 +423,14 @@ mod tests {
         let load_addr = get_load_addr(hello_world.as_ref(), unsafe { debugger.raw_pid() });
         let bp_id = debugger.add_breakpoint_software(load_addr).unwrap();
 
-        assert_eq!(debugger.breakpoints().count(), 1);
+        assert_eq!(debugger.stop_points().count(), 1);
         assert_eq!(
-            debugger.breakpoints().next().unwrap().1.addr(),
+            debugger.stop_points().next().unwrap().1.addr(),
             Some(load_addr)
         );
 
         debugger.remove_breakpoint(bp_id).unwrap();
-        assert_eq!(debugger.breakpoints().count(), 0);
+        assert_eq!(debugger.stop_points().count(), 0);
     }
 
     #[test]

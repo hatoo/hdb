@@ -203,7 +203,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             debugger.remove_breakpoint(hdb::breakpoint::StopPointId(id))?;
                         }
                         BreakPointCommands::List => {
-                            for (id, bp) in debugger.breakpoints() {
+                            for (id, bp) in debugger.stop_points() {
                                 println!("{}: {}", id, bp);
                             }
                         }
