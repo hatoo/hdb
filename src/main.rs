@@ -148,8 +148,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Commands::Continue => {
-                        println!("{:?}", debugger.resume()?);
-                        println!("{:?}", debugger.siginfo()?);
+                        let status = debugger.resume()?;
+                        let _siginfo = debugger.siginfo()?;
+
+                        println!("{:?}", status);
+                        // TODO: show siginfo
                     }
                     Commands::Register { command } => match command {
                         RegisterCommands::Read { name } => {
