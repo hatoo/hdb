@@ -33,6 +33,8 @@ impl Process {
     pub fn spawn(mut command: Command) -> Result<Process, std::io::Error> {
         unsafe {
             command.pre_exec(move || {
+                nix::unistd::setpgid(nix::unistd::Pid::from_raw(0), nix::unistd::Pid::from_raw(0))?;
+
                 // Disable ASLR for the child process
                 nix::sys::personality::set(nix::sys::personality::Persona::ADDR_NO_RANDOMIZE)?;
 
@@ -63,7 +65,7 @@ impl Process {
         Ok(proc)
     }
 
-    fn wait_on_signal(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
+    pub fn wait_on_signal(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
         let status = nix::sys::wait::waitpid(self.pid(), None)?;
         Ok(status)
     }
