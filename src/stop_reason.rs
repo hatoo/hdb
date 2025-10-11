@@ -10,7 +10,7 @@ impl std::fmt::Display for StopReason {
             StopReason::SysCall(num) => {
                 write!(
                     f,
-                    "{}",
+                    "stoped syscall {}",
                     syscall_numbers::native::sys_call_name(*num).unwrap_or("unknown syscall")
                 )
             }

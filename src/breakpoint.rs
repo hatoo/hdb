@@ -33,24 +33,52 @@ pub enum StopPoint {
 impl std::fmt::Display for StopPoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            StopPoint::SoftwareBreak { addr, .. } => {
-                write!(f, "SW 0x{addr:x}")
+            StopPoint::SoftwareBreak { addr, orig_byte } => {
+                write!(
+                    f,
+                    "Software Breakpoint 0x{addr:x} {}",
+                    if orig_byte.is_some() {
+                        "(enabled)"
+                    } else {
+                        "(disabled)"
+                    }
+                )
             }
             StopPoint::Hardware {
-                addr, size, mode, ..
+                addr,
+                size,
+                mode,
+                dr_index,
             } => {
                 let mode_str = match mode {
                     WatchMode::Execute => "Execute",
                     WatchMode::Write => "Write",
                     WatchMode::ReadWrite => "Read/Write",
                 };
-                write!(f, "HW 0x{addr:x}, size: {size}, mode: {mode_str}")
+                write!(
+                    f,
+                    "Hardware Breakpoint 0x{addr:x}, size: {size}, mode: {mode_str} {}",
+                    if dr_index.is_some() {
+                        "(enabled)"
+                    } else {
+                        "(disabled)"
+                    }
+                )
             }
             StopPoint::SysCallCatch { syscall, enabled } => {
                 if let Some(syscall) = syscall {
-                    write!(f, "Catch syscall {}", syscall)
+                    write!(
+                        f,
+                        "Catch syscall {} {}",
+                        syscall,
+                        if *enabled { "(enabled)" } else { "(disabled)" }
+                    )
                 } else {
-                    write!(f, "Catch all syscalls")
+                    write!(
+                        f,
+                        "Catch all syscalls {}",
+                        if *enabled { "(enabled)" } else { "(disabled)" }
+                    )
                 }
             }
         }

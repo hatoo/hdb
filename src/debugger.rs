@@ -175,7 +175,10 @@ impl Debugger {
         &mut self,
         syscall: Option<i64>,
     ) -> Result<StopPointId, std::io::Error> {
-        self.stop_points.add_syscall_catch(syscall)
+        let id = self.stop_points.add_syscall_catch(syscall)?;
+        self.stop_points.enable(&mut self.process, id, None)?;
+
+        Ok(id)
     }
 
     pub fn add_watchpoint(

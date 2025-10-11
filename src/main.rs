@@ -210,7 +210,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     },
                     Commands::CatchPoint { command } => match command {
                         CatchPointCommands::All => {
-                            debugger.add_catch_syscall(None);
+                            debugger.add_catch_syscall(None)?;
                         }
                         CatchPointCommands::Syscall { syscalls } => {
                             for sc in syscalls {
