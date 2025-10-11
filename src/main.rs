@@ -184,7 +184,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         BreakPointCommands::List => {
                             for (id, bp) in debugger.breakpoints() {
-                                println!("{}: {:#x}", id, bp.addr());
+                                println!("{}: {}", id, bp);
                             }
                         }
                     },

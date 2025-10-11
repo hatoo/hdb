@@ -25,6 +25,26 @@ pub enum BreakPoint {
     },
 }
 
+impl std::fmt::Display for BreakPoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BreakPoint::Software { addr, .. } => {
+                write!(f, "SW 0x{addr:x}")
+            }
+            BreakPoint::Hardware {
+                addr, size, mode, ..
+            } => {
+                let mode_str = match mode {
+                    WatchMode::Execute => "Execute",
+                    WatchMode::Write => "Write",
+                    WatchMode::ReadWrite => "Read/Write",
+                };
+                write!(f, "HW 0x{addr:x}, size: {size}, mode: {mode_str}")
+            }
+        }
+    }
+}
+
 #[cfg(target_arch = "x86_64")]
 impl BreakPoint {
     pub fn new_software(addr: usize) -> Result<Self, std::io::Error> {
