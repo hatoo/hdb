@@ -25,6 +25,7 @@ enum Commands {
         #[clap(default_value_t = 1)]
         count: usize,
     },
+    #[clap(alias = "c")]
     Continue,
     Register {
         #[command(subcommand)]
@@ -33,6 +34,10 @@ enum Commands {
     BreakPoint {
         #[command(subcommand)]
         command: BreakPointCommands,
+    },
+    CatchPoint {
+        #[command(subcommand)]
+        command: CatchPointCommands,
     },
     Memory {
         #[command(subcommand)]
@@ -101,6 +106,16 @@ enum MemoryCommands {
         #[clap(value_parser = parse_int::parse::<u8>)]
         data: Vec<u8>,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum CatchPointCommands {
+    All,
+    Syscall {
+        #[clap(value_parser = parse_int::parse::<i64>)]
+        syscalls: Vec<i64>,
+    },
+    Clear,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -192,7 +207,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     },
-
+                    Commands::CatchPoint { command } => match command {
+                        CatchPointCommands::All => {
+                            debugger.catch_all();
+                        }
+                        CatchPointCommands::Syscall { syscalls } => {
+                            debugger.catch_syscalls(syscalls.into_iter());
+                        }
+                        CatchPointCommands::Clear => {
+                            debugger.clear_catch_points();
+                        }
+                    },
                     Commands::Memory { command } => match command {
                         MemoryCommands::Read { addr, size } => {
                             let mut data = vec![0u8; size];

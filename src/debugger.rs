@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use iced_x86::Formatter;
 
 use crate::{
@@ -6,11 +8,45 @@ use crate::{
     register::{DrIndex, RegisterInfo},
 };
 
+pub enum CatchPoints {
+    All,
+    Syscalls(BTreeSet<i64>),
+}
+
+impl CatchPoints {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            CatchPoints::All => false,
+            CatchPoints::Syscalls(set) => set.is_empty(),
+        }
+    }
+}
+
+impl std::fmt::Display for CatchPoints {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CatchPoints::All => write!(f, "all syscalls"),
+            CatchPoints::Syscalls(set) => {
+                let mut first = true;
+                for syscall in set {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", syscall)?;
+                    first = false;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 pub struct Debugger {
     process: Process,
     breakpoints: BreakPoints,
     // used drs
     dr_status: [bool; 4],
+    catch_points: CatchPoints,
 }
 
 impl Debugger {
@@ -19,6 +55,7 @@ impl Debugger {
             process,
             breakpoints: BreakPoints::new(),
             dr_status: [false; 4],
+            catch_points: CatchPoints::Syscalls(BTreeSet::new()),
         }
     }
 
@@ -57,7 +94,12 @@ impl Debugger {
 
     pub fn resume(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
         self.skip_breakpoint()?;
-        self.process.ptrace_cont()?;
+
+        if self.catch_points.is_empty() {
+            self.process.ptrace_cont()?;
+        } else {
+            self.process.ptrace_syscall()?;
+        }
         let pid = unsafe { self.raw_pid() };
         let _ = ctrlc::set_handler(move || {
             let _ =
@@ -218,6 +260,24 @@ impl Debugger {
         }
 
         Ok(results)
+    }
+
+    pub fn catch_all(&mut self) {
+        self.catch_points = CatchPoints::All;
+    }
+    pub fn catch_syscalls(&mut self, syscalls: impl Iterator<Item = i64>) {
+        match &mut self.catch_points {
+            CatchPoints::All => {
+                let set: BTreeSet<i64> = syscalls.collect();
+                self.catch_points = CatchPoints::Syscalls(set);
+            }
+            CatchPoints::Syscalls(set) => {
+                set.extend(syscalls);
+            }
+        }
+    }
+    pub fn clear_catch_points(&mut self) {
+        self.catch_points = CatchPoints::Syscalls(BTreeSet::new());
     }
 }
 
