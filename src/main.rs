@@ -31,6 +31,7 @@ enum Commands {
         #[command(subcommand)]
         command: RegisterCommands,
     },
+    #[clap(alias = "stoppoint")]
     BreakPoint {
         #[command(subcommand)]
         command: BreakPointCommands,
@@ -115,7 +116,6 @@ enum CatchPointCommands {
         #[clap(value_parser = parse_int::parse::<i64>)]
         syscalls: Vec<i64>,
     },
-    Clear,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -200,7 +200,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             debugger.add_watchpoint(addr, size, mode)?;
                         }
                         BreakPointCommands::Remove { id } => {
-                            debugger.remove_breakpoint(hdb::breakpoint::BreakPointId(id))?;
+                            debugger.remove_breakpoint(hdb::breakpoint::StopPointId(id))?;
                         }
                         BreakPointCommands::List => {
                             for (id, bp) in debugger.breakpoints() {
@@ -210,13 +210,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     },
                     Commands::CatchPoint { command } => match command {
                         CatchPointCommands::All => {
-                            debugger.catch_all();
+                            debugger.add_catch_syscall(None);
                         }
                         CatchPointCommands::Syscall { syscalls } => {
-                            debugger.catch_syscalls(syscalls.into_iter());
-                        }
-                        CatchPointCommands::Clear => {
-                            debugger.clear_catch_points();
+                            for sc in syscalls {
+                                debugger.add_catch_syscall(Some(sc))?;
+                            }
                         }
                     },
                     Commands::Memory { command } => match command {

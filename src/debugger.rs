@@ -4,7 +4,7 @@ use iced_x86::Formatter;
 use nix::sys::wait::WaitStatus;
 
 use crate::{
-    breakpoint::{BreakPoint, BreakPointId, BreakPoints, WatchMode},
+    breakpoint::{StopPoint, StopPointId, StopPoints, WatchMode},
     process::Process,
     register::{DrIndex, RegisterInfo},
     stop_reason::StopReason,
@@ -52,19 +52,17 @@ impl std::fmt::Display for CatchPoints {
 
 pub struct Debugger {
     process: Process,
-    breakpoints: BreakPoints,
+    breakpoints: StopPoints,
     // used drs
     dr_status: [bool; 4],
-    catch_points: CatchPoints,
 }
 
 impl Debugger {
     pub fn new(process: crate::process::Process) -> Self {
         Self {
             process,
-            breakpoints: BreakPoints::new(),
+            breakpoints: StopPoints::new(),
             dr_status: [false; 4],
-            catch_points: CatchPoints::Syscalls(BTreeSet::new()),
         }
     }
 
@@ -105,10 +103,10 @@ impl Debugger {
     pub fn resume(&mut self) -> Result<StopReason, std::io::Error> {
         self.skip_breakpoint()?;
 
-        if self.catch_points.is_empty() {
-            self.process.ptrace_cont()?;
-        } else {
+        if self.breakpoints.contains_syscall_catch() {
             self.process.ptrace_syscall()?;
+        } else {
+            self.process.ptrace_cont()?;
         }
         let pid = unsafe { self.raw_pid() };
         let _ = ctrlc::set_handler(move || {
@@ -124,7 +122,7 @@ impl Debugger {
             self.process.ptrace_syscall()?;
             let _status = self.process.wait_on_signal()?;
 
-            if self.catch_points.contains(syscall) {
+            if self.breakpoints.contains(syscall) {
                 return Ok(StopReason::SysCall(syscall));
             } else {
                 return self.resume();
@@ -179,7 +177,7 @@ impl Debugger {
         self.process.write_at(addr, data)
     }
 
-    pub fn breakpoints(&self) -> impl Iterator<Item = (&BreakPointId, &BreakPoint)> {
+    pub fn breakpoints(&self) -> impl Iterator<Item = (&StopPointId, &StopPoint)> {
         self.breakpoints.iter()
     }
 
@@ -198,13 +196,13 @@ impl Debugger {
         self.dr_status[*dr_index] = false;
     }
 
-    pub fn add_breakpoint_software(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
+    pub fn add_breakpoint_software(&mut self, addr: usize) -> Result<StopPointId, std::io::Error> {
         let id = self.breakpoints.add_software(addr)?;
         self.breakpoints.enable(&mut self.process, id, None)?;
         Ok(id)
     }
 
-    pub fn add_breakpoint_hardware(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
+    pub fn add_breakpoint_hardware(&mut self, addr: usize) -> Result<StopPointId, std::io::Error> {
         if let Some(dr_index) = self.take_free_dr() {
             let bp_id = self.breakpoints.add_hardware(addr)?;
             self.breakpoints
@@ -215,12 +213,19 @@ impl Debugger {
         }
     }
 
+    pub fn add_catch_syscall(
+        &mut self,
+        syscall: Option<i64>,
+    ) -> Result<StopPointId, std::io::Error> {
+        self.breakpoints.add_syscall_catch(syscall)
+    }
+
     pub fn add_watchpoint(
         &mut self,
         addr: usize,
         size: usize,
         mode: WatchMode,
-    ) -> Result<BreakPointId, std::io::Error> {
+    ) -> Result<StopPointId, std::io::Error> {
         if let Some(id) = self.take_free_dr() {
             let bp_id = self.breakpoints.add_watchpoint(addr, size, mode)?;
             self.breakpoints
@@ -231,7 +236,7 @@ impl Debugger {
         }
     }
 
-    pub fn remove_breakpoint(&mut self, id: BreakPointId) -> Result<(), std::io::Error> {
+    pub fn remove_breakpoint(&mut self, id: StopPointId) -> Result<(), std::io::Error> {
         if let Some(dr_index) = self.breakpoints.remove(&mut self.process, id)? {
             self.release_dr(dr_index);
         }
@@ -284,24 +289,6 @@ impl Debugger {
         }
 
         Ok(results)
-    }
-
-    pub fn catch_all(&mut self) {
-        self.catch_points = CatchPoints::All;
-    }
-    pub fn catch_syscalls(&mut self, syscalls: impl Iterator<Item = i64>) {
-        match &mut self.catch_points {
-            CatchPoints::All => {
-                let set: BTreeSet<i64> = syscalls.collect();
-                self.catch_points = CatchPoints::Syscalls(set);
-            }
-            CatchPoints::Syscalls(set) => {
-                set.extend(syscalls);
-            }
-        }
-    }
-    pub fn clear_catch_points(&mut self) {
-        self.catch_points = CatchPoints::Syscalls(BTreeSet::new());
     }
 }
 
@@ -437,7 +424,10 @@ mod tests {
         let bp_id = debugger.add_breakpoint_software(load_addr).unwrap();
 
         assert_eq!(debugger.breakpoints().count(), 1);
-        assert_eq!(debugger.breakpoints().next().unwrap().1.addr(), load_addr);
+        assert_eq!(
+            debugger.breakpoints().next().unwrap().1.addr(),
+            Some(load_addr)
+        );
 
         debugger.remove_breakpoint(bp_id).unwrap();
         assert_eq!(debugger.breakpoints().count(), 0);

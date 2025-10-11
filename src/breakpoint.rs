@@ -12,8 +12,8 @@ pub enum WatchMode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// Software or Hardware breakpoint/watchpoint
-pub enum BreakPoint {
-    Software {
+pub enum StopPoint {
+    SoftwareBreak {
         addr: usize,
         orig_byte: Option<u8>,
     },
@@ -23,15 +23,20 @@ pub enum BreakPoint {
         size: usize,
         mode: WatchMode,
     },
+    SysCallCatch {
+        // None for all syscalls
+        syscall: Option<i64>,
+        enabled: bool,
+    },
 }
 
-impl std::fmt::Display for BreakPoint {
+impl std::fmt::Display for StopPoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BreakPoint::Software { addr, .. } => {
+            StopPoint::SoftwareBreak { addr, .. } => {
                 write!(f, "SW 0x{addr:x}")
             }
-            BreakPoint::Hardware {
+            StopPoint::Hardware {
                 addr, size, mode, ..
             } => {
                 let mode_str = match mode {
@@ -41,14 +46,21 @@ impl std::fmt::Display for BreakPoint {
                 };
                 write!(f, "HW 0x{addr:x}, size: {size}, mode: {mode_str}")
             }
+            StopPoint::SysCallCatch { syscall, enabled } => {
+                if let Some(syscall) = syscall {
+                    write!(f, "Catch syscall {}", syscall)
+                } else {
+                    write!(f, "Catch all syscalls")
+                }
+            }
         }
     }
 }
 
 #[cfg(target_arch = "x86_64")]
-impl BreakPoint {
-    pub fn new_software(addr: usize) -> Result<Self, std::io::Error> {
-        Ok(Self::Software {
+impl StopPoint {
+    pub fn new_software_break(addr: usize) -> Result<Self, std::io::Error> {
+        Ok(Self::SoftwareBreak {
             addr,
             orig_byte: None,
         })
@@ -85,20 +97,22 @@ impl BreakPoint {
     }
 
     pub fn is_hardware(&self) -> bool {
-        matches!(self, BreakPoint::Hardware { .. })
+        matches!(self, StopPoint::Hardware { .. })
     }
 
-    pub fn addr(&self) -> usize {
+    pub fn addr(&self) -> Option<usize> {
         match self {
-            BreakPoint::Software { addr, .. } => *addr,
-            BreakPoint::Hardware { addr, .. } => *addr,
+            StopPoint::SoftwareBreak { addr, .. } => Some(*addr),
+            StopPoint::Hardware { addr, .. } => Some(*addr),
+            StopPoint::SysCallCatch { .. } => None,
         }
     }
 
     pub fn enabled(&self) -> bool {
         match self {
-            BreakPoint::Software { orig_byte, .. } => orig_byte.is_some(),
-            BreakPoint::Hardware { dr_index, .. } => dr_index.is_some(),
+            StopPoint::SoftwareBreak { orig_byte, .. } => orig_byte.is_some(),
+            StopPoint::Hardware { dr_index, .. } => dr_index.is_some(),
+            StopPoint::SysCallCatch { enabled, .. } => *enabled,
         }
     }
 
@@ -108,7 +122,7 @@ impl BreakPoint {
         new_dr_index: Option<DrIndex>,
     ) -> Result<(), std::io::Error> {
         match self {
-            BreakPoint::Software { addr, orig_byte } => {
+            StopPoint::SoftwareBreak { addr, orig_byte } => {
                 assert!(orig_byte.is_none());
 
                 let aligned_addr = *addr & !0x7;
@@ -121,7 +135,7 @@ impl BreakPoint {
                 process.write(aligned_addr, int3_data.cast_signed())?;
                 Ok(())
             }
-            BreakPoint::Hardware {
+            StopPoint::Hardware {
                 addr,
                 dr_index,
                 size,
@@ -162,12 +176,16 @@ impl BreakPoint {
 
                 Ok(())
             }
+            StopPoint::SysCallCatch { enabled, .. } => {
+                *enabled = true;
+                Ok(())
+            }
         }
     }
 
     pub fn disable(&mut self, process: &mut Process) -> Result<Option<DrIndex>, std::io::Error> {
         match self {
-            BreakPoint::Software { addr, orig_byte } => {
+            StopPoint::SoftwareBreak { addr, orig_byte } => {
                 assert!(orig_byte.is_some());
                 let aligned_addr = *addr & !0x7;
                 let offset = *addr - aligned_addr;
@@ -179,7 +197,7 @@ impl BreakPoint {
                 process.write(aligned_addr, restored_data.cast_signed())?;
                 Ok(None)
             }
-            BreakPoint::Hardware { dr_index, .. } => {
+            StopPoint::Hardware { dr_index, .. } => {
                 let dr_index = dr_index.take().unwrap();
                 use crate::register::{DR, RegisterValue};
 
@@ -194,12 +212,16 @@ impl BreakPoint {
 
                 Ok(Some(dr_index))
             }
+            StopPoint::SysCallCatch { enabled, .. } => {
+                *enabled = false;
+                Ok(None)
+            }
         }
     }
 
     // For disassemble
     pub fn restore_code(&self, start_addr: usize, code: &mut [u8]) {
-        if let BreakPoint::Software { addr, orig_byte } = self {
+        if let StopPoint::SoftwareBreak { addr, orig_byte } = self {
             if *addr < start_addr || *addr >= start_addr + code.len() {
                 return;
             }
@@ -213,26 +235,26 @@ impl BreakPoint {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct BreakPointId(pub usize);
+pub struct StopPointId(pub usize);
 
-impl std::fmt::Display for BreakPointId {
+impl std::fmt::Display for StopPointId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-pub struct BreakPoints {
+pub struct StopPoints {
     next_id: usize,
-    points: BTreeMap<BreakPointId, BreakPoint>,
+    points: BTreeMap<StopPointId, StopPoint>,
 }
 
-impl Default for BreakPoints {
+impl Default for StopPoints {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl BreakPoints {
+impl StopPoints {
     pub fn new() -> Self {
         Self {
             next_id: 0,
@@ -240,27 +262,52 @@ impl BreakPoints {
         }
     }
 
-    pub fn add_software(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
-        if let Some((id, _)) = self.points.iter().find(|(_, bp)| bp.addr() == addr) {
+    pub fn add_software(&mut self, addr: usize) -> Result<StopPointId, std::io::Error> {
+        if let Some((id, _)) = self.points.iter().find(|(_, bp)| bp.addr() == Some(addr)) {
             return Ok(*id);
         }
 
-        let bp = BreakPoint::new_software(addr)?;
+        let bp = StopPoint::new_software_break(addr)?;
 
-        let id = BreakPointId(self.next_id);
+        let id = StopPointId(self.next_id);
         self.points.insert(id, bp);
         self.next_id += 1;
         Ok(id)
     }
 
-    pub fn add_hardware(&mut self, addr: usize) -> Result<BreakPointId, std::io::Error> {
-        if let Some((id, _)) = self.points.iter().find(|(_, bp)| bp.addr() == addr) {
+    pub fn add_hardware(&mut self, addr: usize) -> Result<StopPointId, std::io::Error> {
+        if let Some((id, _)) = self.points.iter().find(|(_, bp)| bp.addr() == Some(addr)) {
             return Ok(*id);
         }
 
-        let bp = BreakPoint::new_hardware(addr, WatchMode::Execute, 1)?;
+        let bp = StopPoint::new_hardware(addr, WatchMode::Execute, 1)?;
 
-        let id = BreakPointId(self.next_id);
+        let id = StopPointId(self.next_id);
+        self.points.insert(id, bp);
+        self.next_id += 1;
+        Ok(id)
+    }
+
+    pub fn add_syscall_catch(
+        &mut self,
+        syscall: Option<i64>,
+    ) -> Result<StopPointId, std::io::Error> {
+        if let Some((id, _)) = self.points.iter().find(|(_, bp)| {
+            if let StopPoint::SysCallCatch { syscall: s, .. } = bp {
+                *s == syscall
+            } else {
+                false
+            }
+        }) {
+            return Ok(*id);
+        }
+
+        let bp = StopPoint::SysCallCatch {
+            syscall,
+            enabled: false,
+        };
+
+        let id = StopPointId(self.next_id);
         self.points.insert(id, bp);
         self.next_id += 1;
         Ok(id)
@@ -271,14 +318,14 @@ impl BreakPoints {
         addr: usize,
         size: usize,
         mode: WatchMode,
-    ) -> Result<BreakPointId, std::io::Error> {
-        if let Some((id, _)) = self.points.iter().find(|(_, bp)| bp.addr() == addr) {
+    ) -> Result<StopPointId, std::io::Error> {
+        if let Some((id, _)) = self.points.iter().find(|(_, bp)| bp.addr() == Some(addr)) {
             return Ok(*id);
         }
 
-        let bp = BreakPoint::new_hardware(addr, mode, size)?;
+        let bp = StopPoint::new_hardware(addr, mode, size)?;
 
-        let id = BreakPointId(self.next_id);
+        let id = StopPointId(self.next_id);
         self.points.insert(id, bp);
         self.next_id += 1;
         Ok(id)
@@ -287,7 +334,7 @@ impl BreakPoints {
     pub fn enable(
         &mut self,
         process: &mut Process,
-        id: BreakPointId,
+        id: StopPointId,
         dr_index: Option<DrIndex>,
     ) -> Result<(), std::io::Error> {
         if let Some(bp) = self.points.get_mut(&id) {
@@ -301,7 +348,7 @@ impl BreakPoints {
     pub fn remove(
         &mut self,
         process: &mut Process,
-        id: BreakPointId,
+        id: StopPointId,
     ) -> Result<Option<DrIndex>, std::io::Error> {
         if let Some(mut bp) = self.points.remove(&id)
             && bp.enabled()
@@ -312,17 +359,37 @@ impl BreakPoints {
         Ok(None)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&BreakPointId, &BreakPoint)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&StopPointId, &StopPoint)> {
         self.points.iter()
     }
 
-    pub fn break_point_at(&mut self, addr: usize) -> Option<&mut BreakPoint> {
-        self.points.values_mut().find(|bp| bp.addr() == addr)
+    pub fn break_point_at(&mut self, addr: usize) -> Option<&mut StopPoint> {
+        self.points.values_mut().find(|bp| bp.addr() == Some(addr))
     }
 
     pub fn restore_code(&self, start_addr: usize, code: &mut [u8]) {
         for bp in self.points.values() {
             bp.restore_code(start_addr, code);
         }
+    }
+
+    pub fn contains(&self, syscall: i64) -> bool {
+        self.points.values().any(|bp| {
+            if let StopPoint::SysCallCatch {
+                syscall: s,
+                enabled,
+            } = bp
+            {
+                *enabled && (s.is_none() || s == &Some(syscall))
+            } else {
+                false
+            }
+        })
+    }
+
+    pub fn contains_syscall_catch(&self) -> bool {
+        self.points
+            .values()
+            .any(|bp| matches!(bp, StopPoint::SysCallCatch { enabled: true, .. }))
     }
 }
