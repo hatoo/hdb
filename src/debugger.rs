@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use iced_x86::Formatter;
+use nix::sys::wait::WaitStatus;
 
 use crate::{
     breakpoint::{BreakPoint, BreakPointId, BreakPoints, WatchMode},
@@ -107,6 +108,20 @@ impl Debugger {
                 nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), nix::sys::signal::SIGSTOP);
         });
         let status = self.process.wait_on_signal()?;
+
+        if matches!(status, WaitStatus::PtraceSyscall(_)) {
+            let regs = self.process.read_registers()?;
+            let syscall = regs.read(&crate::register::ORIG_RAX).as_i64();
+
+            dbg!(
+                "syscall: {}",
+                syscall_numbers::native::sys_call_name(syscall)
+            );
+
+            self.process.ptrace_syscall()?;
+            let status = self.process.wait_on_signal()?;
+            return Ok(status);
+        }
 
         Ok(status)
     }

@@ -164,9 +164,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Commands::Continue => {
                         let status = debugger.resume()?;
-                        let _siginfo = debugger.siginfo()?;
+                        // let _siginfo = debugger.siginfo()?;
 
                         println!("{:?}", status);
+                        // dbg!(&_siginfo);
                         // TODO: show siginfo
                     }
                     Commands::Register { command } => match command {

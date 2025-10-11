@@ -43,6 +43,22 @@ impl RegisterValue {
             RegisterValue::U128(v) => *v as usize,
         }
     }
+
+    pub fn as_u64(&self) -> u64 {
+        match self {
+            RegisterValue::U64(v) => *v,
+            RegisterValue::U8(v) => *v as u64,
+            RegisterValue::U128(v) => *v as u64,
+        }
+    }
+
+    pub fn as_i64(&self) -> i64 {
+        match self {
+            RegisterValue::U64(v) => *v as i64,
+            RegisterValue::U8(v) => *v as i64,
+            RegisterValue::U128(v) => *v as i64,
+        }
+    }
 }
 
 /// TODO: Make it more ISA agnostic
@@ -70,6 +86,15 @@ pub const PC: RegisterInfo = RegisterInfo {
     reg_type: RegisterType::Gpr,
     format: RegisterFormat::Uint,
     offset: std::mem::offset_of!(libc::user, regs.rip),
+    size: 8,
+};
+
+#[cfg(target_arch = "x86_64")]
+pub const ORIG_RAX: RegisterInfo = RegisterInfo {
+    name: "orig_rax",
+    reg_type: RegisterType::Gpr,
+    format: RegisterFormat::Uint,
+    offset: std::mem::offset_of!(libc::user, regs.orig_rax),
     size: 8,
 };
 
@@ -204,6 +229,13 @@ pub const REGISTERS: &[RegisterInfo] = &[
         reg_type: RegisterType::Gpr,
         format: RegisterFormat::Uint,
         offset: std::mem::offset_of!(libc::user, regs.rax),
+        size: 8,
+    },
+    RegisterInfo {
+        name: "orig_rax",
+        reg_type: RegisterType::Gpr,
+        format: RegisterFormat::Uint,
+        offset: std::mem::offset_of!(libc::user, regs.orig_rax),
         size: 8,
     },
     RegisterInfo {

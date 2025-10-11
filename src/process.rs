@@ -54,6 +54,7 @@ impl Process {
             pid,
         };
         proc.wait_on_signal()?;
+        nix::sys::ptrace::setoptions(proc.pid(), nix::sys::ptrace::Options::PTRACE_O_TRACESYSGOOD)?;
         Ok(proc)
     }
 
