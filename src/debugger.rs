@@ -21,6 +21,13 @@ impl CatchPoints {
             CatchPoints::Syscalls(set) => set.is_empty(),
         }
     }
+
+    fn contains(&self, syscall: i64) -> bool {
+        match self {
+            CatchPoints::All => true,
+            CatchPoints::Syscalls(set) => set.contains(&syscall),
+        }
+    }
 }
 
 impl std::fmt::Display for CatchPoints {
@@ -120,7 +127,12 @@ impl Debugger {
 
             self.process.ptrace_syscall()?;
             let status = self.process.wait_on_signal()?;
-            return Ok(status);
+
+            if self.catch_points.contains(syscall) {
+                return Ok(status);
+            } else {
+                return self.resume();
+            }
         }
 
         Ok(status)
