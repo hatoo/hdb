@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use iced_x86::Formatter;
 use nix::sys::wait::WaitStatus;
 
@@ -9,46 +7,6 @@ use crate::{
     register::{DrIndex, RegisterInfo},
     stop_reason::StopReason,
 };
-
-pub enum CatchPoints {
-    All,
-    Syscalls(BTreeSet<i64>),
-}
-
-impl CatchPoints {
-    pub fn is_empty(&self) -> bool {
-        match self {
-            CatchPoints::All => false,
-            CatchPoints::Syscalls(set) => set.is_empty(),
-        }
-    }
-
-    fn contains(&self, syscall: i64) -> bool {
-        match self {
-            CatchPoints::All => true,
-            CatchPoints::Syscalls(set) => set.contains(&syscall),
-        }
-    }
-}
-
-impl std::fmt::Display for CatchPoints {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CatchPoints::All => write!(f, "all syscalls"),
-            CatchPoints::Syscalls(set) => {
-                let mut first = true;
-                for syscall in set {
-                    if !first {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", syscall)?;
-                    first = false;
-                }
-                Ok(())
-            }
-        }
-    }
-}
 
 pub struct Debugger {
     process: Process,
