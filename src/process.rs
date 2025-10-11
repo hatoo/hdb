@@ -70,10 +70,9 @@ impl Process {
         Ok(status)
     }
 
-    pub fn resume(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
-        nix::sys::ptrace::cont(self.pid(), None)?;
-        let status = self.wait_on_signal()?;
-        Ok(status)
+    pub fn siginfo(&mut self) -> Result<libc::siginfo_t, std::io::Error> {
+        let info = nix::sys::ptrace::getsiginfo(self.pid())?;
+        Ok(info)
     }
 
     pub fn cont(&mut self) -> Result<(), std::io::Error> {
