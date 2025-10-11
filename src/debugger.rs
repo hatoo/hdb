@@ -57,7 +57,7 @@ impl Debugger {
 
     pub fn resume(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
         self.skip_breakpoint()?;
-        self.process.cont()?;
+        self.process.ptrace_cont()?;
         let pid = unsafe { self.raw_pid() };
         let _ = ctrlc::set_handler(move || {
             let _ =

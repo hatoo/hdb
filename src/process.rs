@@ -75,8 +75,13 @@ impl Process {
         Ok(info)
     }
 
-    pub fn cont(&mut self) -> Result<(), std::io::Error> {
+    pub fn ptrace_cont(&mut self) -> Result<(), std::io::Error> {
         nix::sys::ptrace::cont(self.pid(), None)?;
+        Ok(())
+    }
+
+    pub fn ptrace_syscall(&mut self) -> Result<(), std::io::Error> {
+        nix::sys::ptrace::syscall(self.pid(), None)?;
         Ok(())
     }
 
@@ -260,7 +265,7 @@ mod tests {
         command.arg("10");
 
         let mut process = Process::spawn(command).unwrap();
-        process.cont().unwrap();
+        process.ptrace_cont().unwrap();
 
         assert!(matches!(stat(&process), 'S' | 'R'));
     }
@@ -270,10 +275,10 @@ mod tests {
         let command = Command::new("true");
 
         let mut process = Process::spawn(command).unwrap();
-        process.cont().unwrap();
+        process.ptrace_cont().unwrap();
         process.wait_on_signal().unwrap();
 
-        assert!(process.cont().is_err());
+        assert!(process.ptrace_cont().is_err());
     }
 
     #[test]
@@ -281,28 +286,28 @@ mod tests {
         let reg_read = compile("tests/reg_read.s");
         let mut process = Process::spawn(Command::new(&reg_read)).unwrap();
 
-        process.cont().unwrap();
+        process.ptrace_cont().unwrap();
         process.wait_on_signal().unwrap();
         assert_eq!(
             read_reg_by_name(&process.read_registers().unwrap(), "r13"),
             RegisterValue::U64(0xcafecafe)
         );
 
-        process.cont().unwrap();
+        process.ptrace_cont().unwrap();
         process.wait_on_signal().unwrap();
         assert_eq!(
             read_reg_by_name(&process.read_registers().unwrap(), "r13b"),
             RegisterValue::U8(42)
         );
 
-        process.cont().unwrap();
+        process.ptrace_cont().unwrap();
         process.wait_on_signal().unwrap();
         assert_eq!(
             read_reg_by_name(&process.read_registers().unwrap(), "xmm0"),
             RegisterValue::U64(0xba5eba11)
         );
 
-        process.cont().unwrap();
+        process.ptrace_cont().unwrap();
         process.wait_on_signal().unwrap();
         // TODO: find good f128 library
         /*
@@ -328,14 +333,14 @@ mod tests {
         };
         let mut process = Process::spawn(command).unwrap();
 
-        process.cont().unwrap();
+        process.ptrace_cont().unwrap();
         process.wait_on_signal().unwrap();
 
         let mut regs = process.read_registers().unwrap();
         write_reg_by_name(&mut regs, "rsi", RegisterValue::U64(0xcafecafe));
         process.write_registers(&regs).unwrap();
 
-        process.cont().unwrap();
+        process.ptrace_cont().unwrap();
         process.wait_on_signal().unwrap();
         let mut buf = [0u8; 80];
         let len = unsafe { libc::read(rx.as_raw_fd(), buf.as_mut_ptr() as *mut c_void, 80) };
