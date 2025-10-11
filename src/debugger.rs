@@ -68,6 +68,7 @@ impl Debugger {
     fn skip_breakpoint(&mut self) -> Result<Option<nix::sys::wait::WaitStatus>, std::io::Error> {
         let pc = self.get_pc()?;
         if let Some(breakpoint) = self.breakpoints.break_point_at(pc - 1)
+            && breakpoint.enabled()
             && !breakpoint.is_hardware()
         {
             self.set_pc(pc - 1)?;
