@@ -2,6 +2,7 @@ pub mod breakpoint;
 pub mod debugger;
 pub mod process;
 pub mod register;
+pub mod stop_reason;
 
 #[cfg(test)]
 mod test {

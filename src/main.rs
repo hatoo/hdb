@@ -166,7 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let status = debugger.resume()?;
                         // let _siginfo = debugger.siginfo()?;
 
-                        println!("{:?}", status);
+                        println!("{}", status);
                         // dbg!(&_siginfo);
                         // TODO: show siginfo
                     }

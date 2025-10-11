@@ -7,6 +7,7 @@ use crate::{
     breakpoint::{BreakPoint, BreakPointId, BreakPoints, WatchMode},
     process::Process,
     register::{DrIndex, RegisterInfo},
+    stop_reason::StopReason,
 };
 
 pub enum CatchPoints {
@@ -101,7 +102,7 @@ impl Debugger {
         }
     }
 
-    pub fn resume(&mut self) -> Result<nix::sys::wait::WaitStatus, std::io::Error> {
+    pub fn resume(&mut self) -> Result<StopReason, std::io::Error> {
         self.skip_breakpoint()?;
 
         if self.catch_points.is_empty() {
@@ -120,22 +121,17 @@ impl Debugger {
             let regs = self.process.read_registers()?;
             let syscall = regs.read(&crate::register::ORIG_RAX).as_i64();
 
-            dbg!(
-                "syscall: {}",
-                syscall_numbers::native::sys_call_name(syscall)
-            );
-
             self.process.ptrace_syscall()?;
-            let status = self.process.wait_on_signal()?;
+            let _status = self.process.wait_on_signal()?;
 
             if self.catch_points.contains(syscall) {
-                return Ok(status);
+                return Ok(StopReason::SysCall(syscall));
             } else {
                 return self.resume();
             }
         }
 
-        Ok(status)
+        Ok(StopReason::Other(status))
     }
 
     pub fn siginfo(&mut self) -> Result<libc::siginfo_t, std::io::Error> {
@@ -385,7 +381,7 @@ mod tests {
         let status = debugger.resume().unwrap();
         assert!(matches!(
             status,
-            WaitStatus::Stopped(_, nix::sys::signal::Signal::SIGTRAP)
+            StopReason::Other(WaitStatus::Stopped(_, nix::sys::signal::Signal::SIGTRAP))
         ),);
         assert_eq!(debugger.get_pc().unwrap(), load_addr + 1);
 
@@ -395,7 +391,10 @@ mod tests {
         std::io::Read::read_to_string(&mut rx, &mut output).unwrap();
         assert_eq!(output, "Hello, World!\n");
 
-        assert!(matches!(status, WaitStatus::Exited(_, 0)),)
+        assert!(matches!(
+            status,
+            StopReason::Other(WaitStatus::Exited(_, 0))
+        ),);
     }
 
     #[test]
@@ -421,7 +420,10 @@ mod tests {
         std::io::Read::read_to_string(&mut rx, &mut output).unwrap();
         assert_eq!(output, "Hello, World!\n");
 
-        assert!(matches!(status, WaitStatus::Exited(_, 0)),);
+        assert!(matches!(
+            status,
+            StopReason::Other(WaitStatus::Exited(_, 0))
+        ),);
     }
 
     #[test]
